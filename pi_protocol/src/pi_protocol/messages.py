@@ -20,6 +20,7 @@ class Capabilities(BaseModel):
     systemd: bool = False
     docker: bool = False
     gpio: bool = False
+    gpio_detail: str = ""
 
 
 class AuthOkPayload(BaseModel):
@@ -188,3 +189,53 @@ class ServiceLogsPayload(BaseModel):
 class ServiceLogsResultPayload(BaseModel):
     unit: str
     lines: list[str]
+
+
+# --- power ------------------------------------------------------------------
+
+
+class PowerActionPayload(BaseModel):
+    action: Literal["reboot", "shutdown"]
+
+
+class PowerActionResultPayload(BaseModel):
+    action: str
+    ok: bool
+    detail: str
+
+
+# --- gpio -------------------------------------------------------------------
+
+
+class GpioPin(BaseModel):
+    """One usable GPIO on the 40-pin header. `value` is None when the level
+    could not be read - typically because another driver owns the line."""
+
+    bcm: int
+    physical: int
+    mode: Literal["input", "output"]
+    value: int | None = None
+    consumer: str = ""
+    reserved_for: str = ""
+    writable: bool = True
+
+
+class GpioListPayload(BaseModel):
+    """No fields: the agent always reports every header pin at once."""
+
+
+class GpioListResultPayload(BaseModel):
+    pins: list[GpioPin]
+    detail: str = ""
+
+
+class GpioWritePayload(BaseModel):
+    bcm: int
+    value: Literal[0, 1]
+
+
+class GpioWriteResultPayload(BaseModel):
+    bcm: int
+    value: int
+    ok: bool
+    detail: str

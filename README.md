@@ -11,7 +11,7 @@ desktop_app/   # Windows'ta çalışan PySide6 istemcisi
 
 Mesaj sözleşmesi ve transport kararları için bkz. `docs/PROTOCOL.md`.
 
-## Durum: Faz 2 tamamlandı
+## Durum: Faz 3 tamamlandı
 
 Çalışan özellikler:
 
@@ -25,8 +25,10 @@ Mesaj sözleşmesi ve transport kararları için bkz. `docs/PROTOCOL.md`.
   sürükle-bırak ile yükleme, seçili dosyayı indirme, ilerleme çubuklu transfer kuyruğu.
 - **Servisler** — systemd birimlerini listeleme/filtreleme, başlat/durdur/yeniden
   başlat, `journalctl` log görüntüleyici.
+- **Güç & GPIO** — onay isteyen yeniden başlatma/kapatma; 40-pin başlığın canlı
+  görünümü (mod, seviye, satırı tutan sürücü) ve seçili pini HIGH/LOW sürme.
 
-Henüz **yok** (Faz 3-4): güç kontrolü + GPIO, Docker + ağ bilgisi.
+Henüz **yok** (Faz 4): Docker + ağ bilgisi.
 
 ## Pi'ye kurulum
 
@@ -45,6 +47,8 @@ Script şunları yapar:
 - systemd servisini kurar: açılışta otomatik başlar, çökerse yeniden başlar.
 - Dar kapsamlı bir sudoers kuralı ekler: sadece `systemctl start/stop/restart`,
   `reboot`, `poweroff`, `journalctl` — asla `NOPASSWD:ALL` değil.
+- GPIO için `lgpio`'yu derleyip kurar. Derleme başarısız olursa kurulum devam
+  eder; sadece GPIO sekmesi nedenini yazarak devre dışı kalır.
 
 Kurulum sonunda ekrana basılan **IP ve token'ı** masaüstü uygulamasının
 ilk-çalıştırma ekranına girin. Kaldırmak için `sudo bash pi_agent/scripts/uninstall.sh`.
@@ -104,6 +108,13 @@ $env:PI_AGENT_CONFIG = "pi_agent\dev_config.toml"
 - **Process sonlandırma sudo kullanmaz** — sadece agent'ın kendi hesabına ait
   process'leri durdurabilirsiniz. Bu bilinçli: çalınan bir token ile sistem
   servislerinin öldürülmesini engeller (servisler için Servisler sekmesi var).
+- **Kapatılan Pi uzaktan açılamaz.** Arayüz onay kutusunda uyarır; geri getirmek
+  için fiziksel olarak gücü kesip vermek gerekir.
+- **GPIO yalnızca dijital giriş/çıkış.** PWM, I2C/SPI üzerinden cihaz konuşması,
+  kenar tetiklemeli olay dinleme yok. Pin yönü de sadece "yaz → çıkış olur"
+  yönünde değişir; sürülen bir pini tekrar girişe almak için agent'ı yeniden
+  başlatmak gerekir (`sudo systemctl restart pi-agent`).
+- **GPIO seviyeleri anlık okunur**, canlı akış değil — "Yenile" ile tazelenir.
 - **Windows Defender/Firewall ilk çalıştırmada uyarı verebilir** (imzasız uygulama).
 - **`raspberrypi.local` Windows'ta her zaman çözümlenmeyebilir** — kurulum
   ekranına IP adresi girmek daha güvenilir; router'da DHCP rezervasyonu önerilir.

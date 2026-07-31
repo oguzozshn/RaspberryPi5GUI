@@ -37,7 +37,9 @@ fi
 
 echo "==> Sistem paketleri kuruluyor"
 apt-get update -qq
-apt-get install -y python3-venv python3-pip xclip wl-clipboard qrencode rsync >/dev/null
+# python3-dev + build-essential are needed to compile lgpio (GPIO support).
+apt-get install -y python3-venv python3-pip python3-dev build-essential \
+  xclip wl-clipboard qrencode rsync >/dev/null
 
 echo "==> Grup uyelikleri"
 for grp in gpio dialout video docker; do
@@ -57,6 +59,13 @@ if [[ ! -d "$INSTALL_DIR/.venv" ]]; then
 fi
 "$INSTALL_DIR/.venv/bin/pip" install --upgrade pip -q
 "$INSTALL_DIR/.venv/bin/pip" install -e "$INSTALL_DIR/pi_protocol" -e "$INSTALL_DIR/pi_agent" -q
+
+# lgpio is compiled from C; if the build fails the agent still runs, it just
+# reports gpio=false and the GUI explains why instead of the install dying here.
+echo "==> GPIO destegi (lgpio)"
+if ! "$INSTALL_DIR/.venv/bin/pip" install "lgpio>=0.2.2.0" -q; then
+  echo "Uyari: lgpio kurulamadi - GPIO sekmesi devre disi olacak." >&2
+fi
 
 echo "==> Yapilandirma hazirlaniyor: $CONFIG_FILE"
 mkdir -p "$CONFIG_DIR"

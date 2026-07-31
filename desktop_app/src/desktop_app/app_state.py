@@ -14,7 +14,13 @@ from pi_protocol import (
     ErrorPayload,
     FilesListPayload,
     FilesListResultPayload,
+    GpioListPayload,
+    GpioListResultPayload,
+    GpioWritePayload,
+    GpioWriteResultPayload,
     MessageType,
+    PowerActionPayload,
+    PowerActionResultPayload,
     ProcessKillPayload,
     ProcessKillResultPayload,
     ProcessListPayload,
@@ -42,6 +48,9 @@ _ROUTES: list[tuple[MessageType, type[BaseModel], str, str | None]] = [
     (MessageType.SERVICE_LIST_RESULT, ServiceListResultPayload, "services_listed", None),
     (MessageType.SERVICE_ACTION_RESULT, ServiceActionResultPayload, "service_action_done", None),
     (MessageType.SERVICE_LOGS_RESULT, ServiceLogsResultPayload, "service_logs_received", None),
+    (MessageType.POWER_ACTION_RESULT, PowerActionResultPayload, "power_action_done", None),
+    (MessageType.GPIO_LIST_RESULT, GpioListResultPayload, "gpio_listed", "latest_gpio"),
+    (MessageType.GPIO_WRITE_RESULT, GpioWriteResultPayload, "gpio_write_done", None),
 ]
 
 
@@ -58,6 +67,9 @@ class AppState(QObject):
     services_listed = Signal(ServiceListResultPayload)
     service_action_done = Signal(ServiceActionResultPayload)
     service_logs_received = Signal(ServiceLogsResultPayload)
+    power_action_done = Signal(PowerActionResultPayload)
+    gpio_listed = Signal(GpioListResultPayload)
+    gpio_write_done = Signal(GpioWriteResultPayload)
     error_received = Signal(str, str)
     connection_changed = Signal(bool, str)
 
@@ -70,6 +82,7 @@ class AppState(QObject):
 
         self.latest_stats: StatsUpdatePayload | None = None
         self.latest_processes: ProcessListResultPayload | None = None
+        self.latest_gpio: GpioListResultPayload | None = None
 
         ws_client.message_received.connect(self._on_message)
         ws_client.disconnected.connect(lambda reason: self.connection_changed.emit(False, reason))
@@ -141,3 +154,12 @@ class AppState(QObject):
         await self._ws_client.send(
             MessageType.SERVICE_LOGS, ServiceLogsPayload(unit=unit, lines=lines)
         )
+
+    async def power_action(self, action: str) -> None:
+        await self._ws_client.send(MessageType.POWER_ACTION, PowerActionPayload(action=action))
+
+    async def request_gpio(self) -> None:
+        await self._ws_client.send(MessageType.GPIO_LIST, GpioListPayload())
+
+    async def write_gpio(self, bcm: int, value: int) -> None:
+        await self._ws_client.send(MessageType.GPIO_WRITE, GpioWritePayload(bcm=bcm, value=value))

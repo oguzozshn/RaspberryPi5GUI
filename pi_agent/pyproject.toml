@@ -17,6 +17,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "httpx>=0.27"]
+# Linux-only and compiled from C, so it stays out of the base dependencies:
+# the agent must remain installable on a Windows dev box, and a Pi without it
+# simply reports gpio=false instead of failing to start.
+gpio = ["lgpio>=0.2.2.0"]
 
 [project.scripts]
 pi-agent = "pi_agent.main:run"

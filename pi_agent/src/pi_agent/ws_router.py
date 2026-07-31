@@ -19,7 +19,7 @@ from pi_protocol import (
 
 from pi_agent.auth import is_rate_limited, record_failure, token_matches
 from pi_agent.config import AgentConfig
-from pi_agent.handlers import clipboard, files, processes, services, stats
+from pi_agent.handlers import clipboard, files, gpio, power, processes, services, stats
 from pi_agent.wire import Connection
 
 logger = logging.getLogger("pi_agent.ws")
@@ -37,6 +37,9 @@ HANDLERS: dict[MessageType, Handler] = {
     MessageType.SERVICE_LIST: services.handle_list,
     MessageType.SERVICE_ACTION: services.handle_action,
     MessageType.SERVICE_LOGS: services.handle_logs,
+    MessageType.POWER_ACTION: power.handle,
+    MessageType.GPIO_LIST: gpio.handle_list,
+    MessageType.GPIO_WRITE: gpio.handle_write,
 }
 
 
@@ -47,6 +50,8 @@ def current_capabilities() -> Capabilities:
         clipboard=clipboard.detect() is not None,
         clipboard_detail=clipboard.describe(),
         systemd=services.is_available(),
+        gpio=gpio.is_available(),
+        gpio_detail=gpio.describe(),
     )
 
 

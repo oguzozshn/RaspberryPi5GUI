@@ -24,16 +24,24 @@ def qapp() -> QApplication:
 def app_state(qapp: QApplication) -> AppState:
     client = WsClient()
     client.capabilities = Capabilities(
-        clipboard=True, clipboard_detail="wl-copy (Wayland)", systemd=True
+        clipboard=True,
+        clipboard_detail="wl-copy (Wayland)",
+        systemd=True,
+        gpio=True,
+        gpio_detail="pinctrl-rp1 (/dev/gpiochip4)",
     )
     return AppState(client, "192.168.1.42", 8765, "token")
 
 
 @pytest.fixture
 def bare_app_state(qapp: QApplication) -> AppState:
-    """A Pi with no graphical session and no systemd - the degraded case."""
+    """A Pi with no graphical session, no systemd and no GPIO - the degraded case."""
     client = WsClient()
     client.capabilities = Capabilities(
-        clipboard=False, clipboard_detail="Pi'de aktif bir grafik oturumu bulunamadi", systemd=False
+        clipboard=False,
+        clipboard_detail="Pi'de aktif bir grafik oturumu bulunamadi",
+        systemd=False,
+        gpio=False,
+        gpio_detail="lgpio kullanilamiyor: No module named 'lgpio'",
     )
     return AppState(client, "192.168.1.42", 8765, "token")

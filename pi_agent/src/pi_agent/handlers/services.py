@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import re
@@ -21,11 +20,11 @@ from pi_protocol import (
 )
 
 from pi_agent.config import AgentConfig
+from pi_agent.proc import run
 from pi_agent.wire import Connection
 
 logger = logging.getLogger("pi_agent.services")
 
-_TIMEOUT_SECONDS = 30
 _MAX_LOG_LINES = 2000
 
 # Unit names arrive from the client. Nothing is run through a shell, so this is
@@ -67,22 +66,6 @@ def parse_units(payload: str) -> list[ServiceInfo]:
     return services
 
 
-async def _run(command: list[str]) -> tuple[int, str, str]:
-    process = await asyncio.create_subprocess_exec(
-        *command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-    )
-    try:
-        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=_TIMEOUT_SECONDS)
-    except asyncio.TimeoutError:
-        process.kill()
-        return 124, "", f"komut zaman asimina ugradi: {' '.join(command)}"
-    return (
-        process.returncode or 0,
-        stdout.decode(errors="replace"),
-        stderr.decode(errors="replace"),
-    )
-
-
 # --- handlers ---------------------------------------------------------------
 
 
@@ -97,7 +80,7 @@ async def handle_list(conn: Connection, raw: dict, config: AgentConfig) -> None:
         await conn.send_error("not_available", "systemd bu sistemde yok", envelope.id)
         return
 
-    code, stdout, stderr = await _run(
+    code, stdout, stderr = await run(
         ["systemctl", "list-units", "--type=service", "--all", "--no-pager", "--output=json"]
     )
     if code != 0:
@@ -131,7 +114,7 @@ async def handle_action(conn: Connection, raw: dict, config: AgentConfig) -> Non
         return
 
     # install.sh grants passwordless sudo for exactly these systemctl verbs.
-    code, _stdout, stderr = await _run(["sudo", "-n", "systemctl", envelope.payload.action, unit])
+    code, _stdout, stderr = await run(["sudo", "-n", "systemctl", envelope.payload.action, unit])
     ok = code == 0
     detail = "tamam" if ok else (stderr.strip() or f"exit {code}")
     logger.info("service %s %s -> %s", envelope.payload.action, unit, "ok" if ok else detail)
@@ -158,7 +141,7 @@ async def handle_logs(conn: Connection, raw: dict, config: AgentConfig) -> None:
         return
 
     lines = max(1, min(envelope.payload.lines, _MAX_LOG_LINES))
-    code, stdout, stderr = await _run(
+    code, stdout, stderr = await run(
         ["sudo", "-n", "journalctl", "-u", unit, "-n", str(lines), "--no-pager", "--output=short-iso"]
     )
     if code != 0:

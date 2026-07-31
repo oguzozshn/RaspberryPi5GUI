@@ -67,10 +67,23 @@ Tüm mesajlar tek bir JSON zarfı içinde gönderilir (`pi_protocol.envelope.Env
 | `service.action.result` | sunucu → istemci | `{"unit", "action", "ok": bool, "detail": str}` | |
 | `service.logs` | istemci → sunucu | `{"unit": str, "lines": int}` | En fazla 2000 satır. |
 | `service.logs.result` | sunucu → istemci | `{"unit": str, "lines": [str]}` | |
+| `power.action` | istemci → sunucu | `{"action": "reboot"\|"shutdown"}` | |
+| `power.action.result` | sunucu → istemci | `{"action", "ok": bool, "detail": str}` | Başarıda soket kapanmadan yetişmeyebilir (aşağıya bkz.). |
+| `gpio.list` | istemci → sunucu | `{}` | 40-pin başlığın tamamını ister. |
+| `gpio.list.result` | sunucu → istemci | `{"pins": [...], "detail": str}` | Fiziksel pin numarasına göre sıralı; `detail` kullanılan gpiochip. |
+| `gpio.write` | istemci → sunucu | `{"bcm": int, "value": 0\|1}` | Pini çıkışa alıp sürer. |
+| `gpio.write.result` | sunucu → istemci | `{"bcm", "value", "ok": bool, "detail": str}` | |
 
 `files.list` hata kodları: `not_found`, `not_a_directory`, `permission_denied`, `io_error`.
 Servis hata kodları: `not_available` (systemd yok), `bad_request` (geçersiz unit adı),
 `systemctl_failed`, `journalctl_failed`.
+Güç/GPIO hata kodları: `not_available` (systemd ya da GPIO yok — mesaj kullanıcıya
+gösterilecek nedeni taşır), `bad_request` (şemaya uymayan `action`/`value`).
+
+`GpioPin` alanları: `bcm`, `physical` (başlıktaki pin numarası), `mode`
+(`input`/`output`), `value` (`0`/`1`, okunamadıysa `null`), `consumer` (satırı
+tutan sürücü), `reserved_for` (pinin normalde bağlı olduğu arabirim, bilgi
+amaçlı), `writable` (`false` ise ajan yazmayı reddeder).
 
 ## Capabilities
 
@@ -82,8 +95,10 @@ bağlanmak yeterli olur.
 |---|---|
 | `clipboard` | `wl-copy`/`xclip` ile Pi'nin panosuna erişilebiliyor mu. |
 | `clipboard_detail` | Kullanılan araç, ya da erişilemiyorsa **nedeni** (kullanıcıya gösterilir). |
-| `systemd` | `systemctl` var mı. |
-| `docker`, `gpio` | Faz 3-4'te doldurulacak, şu an daima `false`. |
+| `systemd` | `systemctl` var mı. Güç kontrolü de buna bağlı. |
+| `gpio` | GPIO başlığı sürülebiliyor mu (`lgpio` + açılabilen bir gpiochip). |
+| `gpio_detail` | Kullanılan yonga, ya da erişilemiyorsa **nedeni** (kullanıcıya gösterilir). |
+| `docker` | Faz 4'te doldurulacak, şu an daima `false`. |
 
 ### Pano köprüsü nasıl çalışır
 
@@ -100,6 +115,47 @@ düşülür. Hiçbiri yoksa `clipboard=false` döner ve arayüz nedenini göster
 olmadan (`create_subprocess_exec`) çalıştırıldığı için shell enjeksiyonu söz
 konusu değil; doğrulamanın amacı `--all` veya `-M host` gibi bir adın systemctl
 tarafından unit yerine **seçenek** olarak okunmasını engellemek.
+
+## Güç kontrolü
+
+`power.action` yalnızca bir sözlük anahtarı seçer; argv istemciden gelmez:
+
+| action | çalıştırılan komut |
+|---|---|
+| `reboot` | `sudo -n systemctl reboot` |
+| `shutdown` | `sudo -n systemctl poweroff` |
+
+İkisi de `install.sh`'in yazdığı sudoers kuralında birebir listelidir; `sudo -n`
+kullanıldığı için kural eksikse komut parola beklemek yerine hemen hata döner.
+
+**Yanıt garantisi tek yönlüdür.** Komut başarılıysa Pi zaten kapanmaya başlamış
+olur ve `power.action.result` sokete yetişmeyebilir — istemci bunu beklenen
+davranış olarak gösterir. Başarısızlık (ör. sudoers kuralı yok) ise güvenilir
+şekilde geri döner; kullanıcının görmesi gereken durum da budur.
+
+## GPIO
+
+Erişim `lgpio` üzerindendir: Pi 5'te RP1'i kernel'in gpiochip karakter aygıtı
+üzerinden sürer. Eski `RPi.GPIO`/sysfs yolu Pi 5'te çalışmaz.
+
+- **Yonga etikete göre bulunur**, numaraya göre değil: başlık bankası Bookworm
+  kernel'leri arasında `gpiochip4` → `gpiochip0` diye yer değiştirdi, etiket
+  (`pinctrl-rp1`) ise sabit kaldı.
+- **`gpio.list` tahribatsızdır.** Sadece örneklenen pinler girişe alınıp okunur
+  ve *hemen* serbest bırakılır; aksi hâlde ajan Pi'deki diğer programlara
+  başlığın tamamını tutuyormuş gibi görünürdü. Başka bir sürücünün (SPI, I2C,
+  PWM...) tuttuğu satır talep edilmez, `value: null` döner.
+- **`gpio.write` pini çıkış olarak ayırır ve ayırmayı bırakmaz** — sürülen bir
+  pin sonraki listelemede seviyesini korumalı. Ajan süreci bittiğinde kernel
+  satırları otomatik serbest bırakır.
+- **BCM 0 ve 1'e yazma engellidir** (HAT ID EEPROM). Bu satırları sürmek açılışta
+  HAT algılamayı bozabilir ve normal bir kabloya gerek duymaz; `writable: false`
+  ile bildirilir, arayüz de düğmeleri kapatır.
+- Diğer özel işlevli pinler (I2C/SPI/UART/PWM) `reserved_for` ile işaretlenir
+  ama yazılabilir kalır; arayüz onaylatmadan önce uyarır.
+- `lgpio` derlenmiş ve Linux'a özgü olduğu için ajanın **zorunlu** bağımlılığı
+  değildir. Yoksa `gpio=false` döner, `gpio_detail` nedenini taşır ve ajan geri
+  kalan her şeyi yapmaya devam eder.
 
 ## Dosya transferi (HTTP, WS değil)
 
@@ -121,5 +177,4 @@ böylece bellek kullanımı dosya boyutundan bağımsız sabit kalır.
 
 ## Sonraki fazlarda eklenecek türler (henüz implemente edilmedi)
 
-- **Faz 3**: `power.reboot`, `power.shutdown`, `gpio.read`, `gpio.write`.
 - **Faz 4**: `docker.list`/`docker.action`/`docker.logs`, `network.info`.
