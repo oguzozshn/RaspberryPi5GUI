@@ -1,0 +1,10 @@
+# Bu dosyalar Pi'de (Linux) dogrudan tuketiliyor ve CRLF ile bozuluyorlar:
+# systemd 'Environment=WAYLAND_DISPLAY=wayland-0\r' degerini oldugu gibi alir ve
+# pano koprusu sessizce calismaz; visudo CRLF'li kurali reddeder; bash ise
+# "#!/usr/bin/env bash\r: No such file or directory" der.
+#
+# Windows'ta calisildigi icin (core.autocrlf=true) hem worktree'de hem de
+# `git archive` ciktisinda LF garantiye alinmali.
+*.sh text eol=lf
+pi_agent/scripts/pi-agent.service text eol=lf
+pi_agent/scripts/sudoers.d_pi-agent text eol=lf
