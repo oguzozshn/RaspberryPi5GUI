@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 import shutil
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -69,20 +70,36 @@ def describe() -> str:
 
 
 async def write_text(text: str) -> tuple[bool, str]:
+    """Put text on the Pi's clipboard.
+
+    stderr goes to a temporary *file*, not a pipe, and the process is awaited
+    with wait() rather than communicate(). Both clipboard tools fork a daemon
+    that keeps serving the selection until it is replaced - on Wayland the
+    content only exists as long as its source client does. That daemon inherits
+    our pipes, so waiting for pipe EOF (what communicate() does) blocks until
+    somebody else copies something, and we would report a timeout for a write
+    that actually succeeded.
+    """
     tool = detect()
     if tool is None:
         return False, describe()
 
     try:
-        process = await asyncio.create_subprocess_exec(
-            *tool.write_cmd,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        _, stderr = await asyncio.wait_for(
-            process.communicate(text.encode()), timeout=_TIMEOUT_SECONDS
-        )
+        with tempfile.TemporaryFile() as stderr_file:
+            process = await asyncio.create_subprocess_exec(
+                *tool.write_cmd,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=stderr_file,
+            )
+            assert process.stdin is not None
+            process.stdin.write(text.encode())
+            await process.stdin.drain()
+            process.stdin.close()
+
+            await asyncio.wait_for(process.wait(), timeout=_TIMEOUT_SECONDS)
+            stderr_file.seek(0)
+            stderr = stderr_file.read()
     except asyncio.TimeoutError:
         return False, f"{tool.name} zaman asimina ugradi"
     except OSError as exc:

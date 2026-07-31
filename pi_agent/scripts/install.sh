@@ -43,6 +43,12 @@ apt-get update -qq
 apt-get install -y python3-venv python3-pip python3-dev build-essential \
   xclip wl-clipboard iw qrencode rsync >/dev/null
 
+# GPIO icin: PyPI'deki lgpio yalnizca binding'dir, derlenirken swig'e ve
+# liblgpio'nun basliklarina (-llgpio) ihtiyac duyar. Bunlar bulunamazsa kurulum
+# durmamali - GPIO opsiyonel, eksikligi arayuzde nedeniyle birlikte gosterilir.
+apt-get install -y swig liblgpio-dev >/dev/null 2>&1 ||
+  echo "Uyari: swig/liblgpio-dev kurulamadi - GPIO devre disi kalabilir." >&2
+
 echo "==> Grup uyelikleri"
 for grp in gpio dialout video docker; do
   if getent group "$grp" >/dev/null 2>&1; then

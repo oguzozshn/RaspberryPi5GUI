@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import sys
 
 import pytest
@@ -76,3 +77,30 @@ async def test_write_text_round_trips_through_a_stub_tool(monkeypatch: pytest.Mo
 
     ok, text = await clipboard.read_text()
     assert ok and text == "gizli-sifre"
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX subprocess pipeline")
+async def test_write_text_succeeds_when_the_tool_leaves_a_daemon_behind(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Regression, found on a real Pi 5.
+
+    wl-copy (and xclip) fork a helper that keeps serving the selection and
+    inherits our pipes. Waiting for pipe EOF meant a successful copy was
+    reported as a timeout - the text was on the clipboard, the UI said it had
+    failed. The stub below reproduces that: the shell exits immediately but
+    leaves a background process holding the descriptors.
+    """
+    sink = tmp_path / "clip.txt"
+    monkeypatch.setattr(
+        clipboard,
+        "detect",
+        lambda: clipboard.ClipboardTool(
+            "stub-daemon", ["sh", "-c", f"cat > {sink}; sleep 15 &"], ["cat", str(sink)]
+        ),
+    )
+
+    ok, detail = await asyncio.wait_for(clipboard.write_text("gizli-sifre"), timeout=10)
+    assert ok, detail
+    assert sink.read_text() == "gizli-sifre"
