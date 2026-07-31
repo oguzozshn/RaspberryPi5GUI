@@ -11,8 +11,20 @@ class AuthRequestPayload(BaseModel):
     token: str
 
 
+class Capabilities(BaseModel):
+    """What this particular Pi can actually do. Ships inside auth.ok rather than
+    as a separate push so the client can never race ahead of it."""
+
+    clipboard: bool = False
+    clipboard_detail: str = ""
+    systemd: bool = False
+    docker: bool = False
+    gpio: bool = False
+
+
 class AuthOkPayload(BaseModel):
     protocol_version: int
+    capabilities: Capabilities = Capabilities()
 
 
 class AuthRejectedPayload(BaseModel):
@@ -83,6 +95,17 @@ class ProcessListResultPayload(BaseModel):
     total_count: int
 
 
+class ProcessKillPayload(BaseModel):
+    pid: int
+    force: bool = False
+
+
+class ProcessKillResultPayload(BaseModel):
+    pid: int
+    ok: bool
+    detail: str
+
+
 # --- files (request / response) ---------------------------------------------
 
 
@@ -103,3 +126,65 @@ class FilesListResultPayload(BaseModel):
     path: str
     parent: str | None
     entries: list[FileEntry]
+
+
+# --- chat / clipboard bridge ------------------------------------------------
+
+
+class ChatSendPayload(BaseModel):
+    """Text typed in the desktop GUI, to be placed on the Pi's system clipboard
+    so it can be pasted into whatever prompt is focused there."""
+
+    text: str
+
+
+class ChatMessagePayload(BaseModel):
+    text: str
+    source: Literal["desktop", "pi"]
+    delivered_to_clipboard: bool = False
+    detail: str = ""
+
+
+class ClipboardPullPayload(BaseModel):
+    """Read the Pi's clipboard back into the desktop chat history."""
+
+
+# --- systemd services -------------------------------------------------------
+
+
+class ServiceInfo(BaseModel):
+    unit: str
+    load: str
+    active: str
+    sub: str
+    description: str
+
+
+class ServiceListPayload(BaseModel):
+    pattern: str = ""
+
+
+class ServiceListResultPayload(BaseModel):
+    services: list[ServiceInfo]
+
+
+class ServiceActionPayload(BaseModel):
+    unit: str
+    action: Literal["start", "stop", "restart"]
+
+
+class ServiceActionResultPayload(BaseModel):
+    unit: str
+    action: str
+    ok: bool
+    detail: str
+
+
+class ServiceLogsPayload(BaseModel):
+    unit: str
+    lines: int = 200
+
+
+class ServiceLogsResultPayload(BaseModel):
+    unit: str
+    lines: list[str]

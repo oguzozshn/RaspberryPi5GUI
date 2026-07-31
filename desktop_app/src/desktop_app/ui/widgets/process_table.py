@@ -22,7 +22,7 @@ class ProcessTable(QTableWidget):
     def update_processes(self, payload: ProcessListResultPayload) -> None:
         # Preserve the selected PID across refreshes so the row the user clicked
         # doesn't jump out from under them every couple of seconds.
-        selected_pid = self._selected_pid()
+        selected_pid = self.selected_pid()
 
         self.setRowCount(len(payload.processes))
         for row, proc in enumerate(payload.processes):
@@ -48,9 +48,16 @@ class ProcessTable(QTableWidget):
         self.resizeColumnsToContents()
         self.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
 
-    def _selected_pid(self) -> int | None:
+    def selected_pid(self) -> int | None:
         rows = self.selectionModel().selectedRows() if self.selectionModel() else []
         if not rows:
             return None
         item = self.item(rows[0].row(), 0)
         return int(item.text()) if item else None
+
+    def selected_name(self) -> str | None:
+        rows = self.selectionModel().selectedRows() if self.selectionModel() else []
+        if not rows:
+            return None
+        item = self.item(rows[0].row(), 1)
+        return item.text() if item else None

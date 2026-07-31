@@ -9,6 +9,8 @@ from pi_protocol import (
     Envelope,
     MessageType,
     ProcessInfo,
+    ProcessKillPayload,
+    ProcessKillResultPayload,
     ProcessListPayload,
     ProcessListResultPayload,
 )
@@ -77,3 +79,41 @@ async def handle(conn: Connection, raw: dict, config: AgentConfig) -> None:
     await _prime()
     payload = await asyncio.to_thread(collect, envelope.payload.limit, envelope.payload.sort_by)
     await conn.send(MessageType.PROCESS_LIST_RESULT, payload, envelope.id)
+
+
+def kill(pid: int, force: bool) -> tuple[bool, str]:
+    """Signal a process. Deliberately not run under sudo: the agent can only
+    reach processes its own account owns, so a stolen pairing token cannot be
+    used to kill system daemons."""
+    try:
+        proc = psutil.Process(pid)
+        name = proc.name()
+        proc.kill() if force else proc.terminate()
+    except psutil.NoSuchProcess:
+        return False, f"process bulunamadi: {pid}"
+    except psutil.AccessDenied:
+        return False, f"izin yok (baska bir kullaniciya ait olabilir): {pid}"
+    except psutil.Error as exc:
+        return False, str(exc)
+
+    try:
+        proc.wait(timeout=3)
+    except psutil.TimeoutExpired:
+        verb = "SIGKILL" if force else "SIGTERM"
+        return True, f"{verb} gonderildi, {name} henuz kapanmadi"
+    return True, f"{name} sonlandirildi"
+
+
+async def handle_kill(conn: Connection, raw: dict, config: AgentConfig) -> None:
+    try:
+        envelope = Envelope[ProcessKillPayload].model_validate(raw)
+    except ValidationError as exc:
+        await conn.send_error("bad_request", str(exc), raw.get("id"))
+        return
+
+    ok, detail = await asyncio.to_thread(kill, envelope.payload.pid, envelope.payload.force)
+    await conn.send(
+        MessageType.PROCESS_KILL_RESULT,
+        ProcessKillResultPayload(pid=envelope.payload.pid, ok=ok, detail=detail),
+        envelope.id,
+    )

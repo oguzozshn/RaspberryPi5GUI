@@ -9,7 +9,7 @@ import websockets
 from PySide6.QtCore import QObject, Signal
 from pydantic import BaseModel
 
-from pi_protocol import AuthRequestPayload, Envelope, MessageType
+from pi_protocol import AuthOkPayload, AuthRequestPayload, Capabilities, Envelope, MessageType
 
 logger = logging.getLogger("desktop_app.ws_client")
 
@@ -32,6 +32,9 @@ class WsClient(QObject):
         super().__init__()
         self._socket = None
         self._recv_task: asyncio.Task | None = None
+        # Filled from auth.ok; carried in the handshake rather than a separate
+        # push so no consumer can observe the connection before it is known.
+        self.capabilities = Capabilities()
 
     @property
     def is_connected(self) -> bool:
@@ -53,6 +56,12 @@ class WsClient(QObject):
             await socket.close()
             self.auth_rejected.emit(reason)
             return AuthResult.REJECTED
+
+        try:
+            self.capabilities = Envelope[AuthOkPayload].model_validate(data).payload.capabilities
+        except Exception:  # noqa: BLE001 - an older agent may omit capabilities
+            logger.warning("auth.ok carried no usable capabilities; assuming none")
+            self.capabilities = Capabilities()
 
         self._socket = socket
         self._recv_task = asyncio.ensure_future(self._listen())

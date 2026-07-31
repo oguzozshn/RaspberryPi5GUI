@@ -12,13 +12,14 @@ from pi_protocol import (
     AuthOkPayload,
     AuthRejectedPayload,
     AuthRequestPayload,
+    Capabilities,
     Envelope,
     MessageType,
 )
 
 from pi_agent.auth import is_rate_limited, record_failure, token_matches
 from pi_agent.config import AgentConfig
-from pi_agent.handlers import files, processes, stats
+from pi_agent.handlers import clipboard, files, processes, services, stats
 from pi_agent.wire import Connection
 
 logger = logging.getLogger("pi_agent.ws")
@@ -29,8 +30,24 @@ Handler = Callable[[Connection, dict, AgentConfig], Awaitable[None]]
 
 HANDLERS: dict[MessageType, Handler] = {
     MessageType.PROCESS_LIST: processes.handle,
+    MessageType.PROCESS_KILL: processes.handle_kill,
     MessageType.FILES_LIST: files.handle_list,
+    MessageType.CHAT_SEND: clipboard.handle_send,
+    MessageType.CLIPBOARD_PULL: clipboard.handle_pull,
+    MessageType.SERVICE_LIST: services.handle_list,
+    MessageType.SERVICE_ACTION: services.handle_action,
+    MessageType.SERVICE_LOGS: services.handle_logs,
 }
+
+
+def current_capabilities() -> Capabilities:
+    """Probed per connection rather than cached at startup, so plugging in a
+    display or logging into the desktop takes effect on the next reconnect."""
+    return Capabilities(
+        clipboard=clipboard.detect() is not None,
+        clipboard_detail=clipboard.describe(),
+        systemd=services.is_available(),
+    )
 
 
 async def _authenticate(websocket: WebSocket, conn: Connection, config: AgentConfig) -> bool:
@@ -58,7 +75,10 @@ async def _authenticate(websocket: WebSocket, conn: Connection, config: AgentCon
         await websocket.close(code=4403, reason="invalid token")
         return False
 
-    await conn.send(MessageType.AUTH_OK, AuthOkPayload(protocol_version=PROTOCOL_VERSION))
+    await conn.send(
+        MessageType.AUTH_OK,
+        AuthOkPayload(protocol_version=PROTOCOL_VERSION, capabilities=current_capabilities()),
+    )
     return True
 
 

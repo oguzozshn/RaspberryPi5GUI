@@ -90,8 +90,9 @@ install -m 440 "$SUDOERS_TMP" /etc/sudoers.d/pi-agent
 rm -f "$SUDOERS_TMP"
 
 echo "==> systemd servisi kuruluyor"
-sed "s/__USER__/$TARGET_USER/g" "$REPO_ROOT/pi_agent/scripts/pi-agent.service" \
-  > /etc/systemd/system/pi-agent.service
+TARGET_UID="$(id -u "$TARGET_USER")"
+sed -e "s/__USER__/$TARGET_USER/g" -e "s/__UID__/$TARGET_UID/g" \
+  "$REPO_ROOT/pi_agent/scripts/pi-agent.service" > /etc/systemd/system/pi-agent.service
 systemctl daemon-reload
 systemctl enable pi-agent
 systemctl restart pi-agent

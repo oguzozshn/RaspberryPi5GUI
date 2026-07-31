@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from pi_agent.handlers import stats
+from pi_agent.handlers import processes, stats
 from pi_protocol import (
     AuthRequestPayload,
     Envelope,
@@ -92,6 +94,38 @@ def test_slow_handler_does_not_block_other_requests(client: TestClient, tmp_path
     assert by_id[fast.id]["type"] == MessageType.FILES_LIST_RESULT.value
     assert by_id[slow.id]["type"] == MessageType.PROCESS_LIST_RESULT.value
     assert first["id"] == fast.id, "hizli istek yavas olani beklememeli"
+
+
+def test_kill_terminates_a_real_child_process() -> None:
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        ok, detail = processes.kill(child.pid, force=False)
+        assert ok, detail
+        assert child.wait(timeout=5) is not None
+    finally:
+        if child.poll() is None:
+            child.kill()
+
+
+def test_kill_reports_missing_process() -> None:
+    ok, detail = processes.kill(9_999_999, force=False)
+    assert ok is False
+    assert "bulunamadi" in detail
+
+
+def test_auth_ok_carries_capabilities(client: TestClient) -> None:
+    """Capabilities ride inside auth.ok rather than a follow-up push, so the
+    client cannot start rendering before it knows what the Pi supports."""
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json(
+            Envelope(type=MessageType.AUTH_REQUEST, payload=AuthRequestPayload(token=TOKEN)).model_dump(mode="json")
+        )
+        reply = ws.receive_json()
+
+    caps = reply["payload"]["capabilities"]
+    assert set(caps) >= {"clipboard", "clipboard_detail", "systemd", "docker", "gpio"}
+    assert isinstance(caps["clipboard"], bool)
+    assert caps["clipboard_detail"], "kullaniciya gosterilecek bir aciklama olmali"
 
 
 def test_unknown_message_type_does_not_close_connection(client: TestClient) -> None:

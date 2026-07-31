@@ -12,8 +12,10 @@ from PySide6.QtWidgets import (
 
 from desktop_app.app_state import AppState
 from desktop_app.connection.file_client import FileClient
+from desktop_app.ui.pages.chat_page import ChatPage
 from desktop_app.ui.pages.dashboard_page import DashboardPage
 from desktop_app.ui.pages.files_page import FilesPage
+from desktop_app.ui.pages.services_page import ServicesPage
 
 
 class MainWindow(QMainWindow):
@@ -32,14 +34,17 @@ class MainWindow(QMainWindow):
 
         file_client = FileClient(app_state.host, app_state.port, app_state.token)
         self._dashboard = DashboardPage(app_state)
+        self._chat = ChatPage(app_state)
         self._files = FilesPage(app_state, file_client)
+        self._services = ServicesPage(app_state)
+        self._pages = [self._dashboard, self._chat, self._files, self._services]
 
         pages = QStackedWidget()
-        pages.addWidget(self._dashboard)
-        pages.addWidget(self._files)
+        for page in self._pages:
+            pages.addWidget(page)
 
         sidebar = QListWidget()
-        sidebar.addItems(["Dashboard", "Dosyalar"])
+        sidebar.addItems(["Dashboard", "Sohbet", "Dosyalar", "Servisler"])
         sidebar.setCurrentRow(0)
         sidebar.setMaximumWidth(160)
         sidebar.currentRowChanged.connect(pages.setCurrentIndex)
@@ -55,8 +60,8 @@ class MainWindow(QMainWindow):
 
     def start(self) -> None:
         """Kick off the pages' initial requests once a running event loop exists."""
-        self._dashboard.start()
-        self._files.start()
+        for page in self._pages:
+            page.start()
 
     def _set_connected(self, connected: bool, reason: str = "") -> None:
         if connected:

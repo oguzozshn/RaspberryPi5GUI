@@ -11,17 +11,22 @@ desktop_app/   # Windows'ta çalışan PySide6 istemcisi
 
 Mesaj sözleşmesi ve transport kararları için bkz. `docs/PROTOCOL.md`.
 
-## Durum: Faz 1 tamamlandı
+## Durum: Faz 2 tamamlandı
 
 Çalışan özellikler:
 
 - **Dashboard** — canlı CPU kullanımı (toplam + çekirdek başına), CPU sıcaklığı,
-  bellek, disk ve uptime/load average; CPU'ya göre sıralı çalışan uygulama listesi.
+  bellek, disk ve uptime/load average; CPU'ya göre sıralı çalışan uygulama
+  listesi ve seçili process'i sonlandırma.
+- **Sohbet** — yazdığınız metin Pi'nin sistem panosuna gider, Pi'de Ctrl+V ile
+  herhangi bir prompt'a yapıştırırsınız (şifre göndermek için SSH oturumu açık
+  tutmaya son). Pi'nin panosunu geri okuma, şifre yazarken girişi maskeleme.
 - **Dosyalar** — Pi'nin dosya sisteminde gezinme, Windows Explorer'dan
   sürükle-bırak ile yükleme, seçili dosyayı indirme, ilerleme çubuklu transfer kuyruğu.
+- **Servisler** — systemd birimlerini listeleme/filtreleme, başlat/durdur/yeniden
+  başlat, `journalctl` log görüntüleyici.
 
-Henüz **yok** (sırasıyla Faz 2-4'te gelecek): chat/pano köprüsü, servis ve
-process yönetimi, güç kontrolü + GPIO, Docker + ağ bilgisi.
+Henüz **yok** (Faz 3-4): güç kontrolü + GPIO, Docker + ağ bilgisi.
 
 ## Pi'ye kurulum
 
@@ -92,6 +97,13 @@ $env:PI_AGENT_CONFIG = "pi_agent\dev_config.toml"
   eklenebilecek şekilde tasarlandı (uvicorn `ssl_certfile`/`ssl_keyfile`).
 - **Sürükle-bırak şu an sadece dosya kabul ediyor**, klasörler atlanıyor.
 - **Transferler yeniden başlatılabilir değil**; kesilen bir aktarım baştan yapılır.
+- **Pano köprüsü Pi'de açık bir masaüstü oturumu gerektirir.** Tamamen headless
+  (SSH-only) bir Pi'de yazılacak bir pano yoktur; arayüz bunu sekmede uyarı
+  olarak gösterir, sessizce başarısız olmaz.
+- **Sohbet geçmişi kalıcı değil**; uygulama kapanınca silinir.
+- **Process sonlandırma sudo kullanmaz** — sadece agent'ın kendi hesabına ait
+  process'leri durdurabilirsiniz. Bu bilinçli: çalınan bir token ile sistem
+  servislerinin öldürülmesini engeller (servisler için Servisler sekmesi var).
 - **Windows Defender/Firewall ilk çalıştırmada uyarı verebilir** (imzasız uygulama).
 - **`raspberrypi.local` Windows'ta her zaman çözümlenmeyebilir** — kurulum
   ekranına IP adresi girmek daha güvenilir; router'da DHCP rezervasyonu önerilir.

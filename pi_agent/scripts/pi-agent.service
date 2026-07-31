@@ -5,13 +5,22 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-# __USER__ is substituted by install.sh with the account that ran it. The agent
-# deliberately runs as your own login user, not an isolated system user: file
-# transfers must land in your home directory with your ownership, and the
-# clipboard bridge has to reach your graphical session.
+# __USER__ / __UID__ are substituted by install.sh with the account that ran it.
+# The agent deliberately runs as your own login user, not an isolated system
+# user: file transfers must land in your home directory with your ownership,
+# and the clipboard bridge has to reach your graphical session.
 User=__USER__
 WorkingDirectory=/opt/pi-agent
 Environment=PI_AGENT_CONFIG=/etc/pi-agent/config.toml
+
+# A systemd system service starts with a clean environment and would otherwise
+# see none of the desktop session, leaving wl-copy/xclip with nothing to talk to.
+# Bookworm on a Pi 5 defaults to Wayland; DISPLAY is kept as the X11 fallback.
+Environment=XDG_RUNTIME_DIR=/run/user/__UID__
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/__USER__/.Xauthority
+
 ExecStart=/opt/pi-agent/.venv/bin/python -m pi_agent.main
 Restart=on-failure
 RestartSec=3

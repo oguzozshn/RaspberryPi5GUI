@@ -1,9 +1,17 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QGridLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
-from pi_protocol import StatsUpdatePayload
+from pi_protocol import ProcessKillResultPayload, StatsUpdatePayload
 
 from desktop_app.app_state import AppState
 from desktop_app.async_utils import schedule
@@ -38,15 +46,29 @@ class DashboardPage(QWidget):
             tiles.addWidget(tile, 0, column)
 
         self._process_table = ProcessTable()
+        self._process_table.itemSelectionChanged.connect(self._on_process_selection)
+
+        self._kill_button = QPushButton("Sonlandir")
+        self._kill_button.setEnabled(False)
+        self._kill_button.clicked.connect(self._kill_selected)
+        self._process_status = QLabel("")
+        self._process_status.setStyleSheet(muted(self, size_px=12))
+
+        process_bar = QHBoxLayout()
+        process_bar.addWidget(QLabel("Calisan uygulamalar (CPU'ya gore siralanmis)"))
+        process_bar.addStretch(1)
+        process_bar.addWidget(self._process_status)
+        process_bar.addWidget(self._kill_button)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._header)
         layout.addLayout(tiles)
-        layout.addWidget(QLabel("Calisan uygulamalar (CPU'ya gore siralanmis)"))
+        layout.addLayout(process_bar)
         layout.addWidget(self._process_table, stretch=1)
 
         app_state.stats_updated.connect(self._on_stats)
         app_state.processes_updated.connect(self._on_processes)
+        app_state.process_killed.connect(self._on_process_killed)
 
         if app_state.latest_stats is not None:
             self._on_stats(app_state.latest_stats)
@@ -77,6 +99,39 @@ class DashboardPage(QWidget):
     def _on_processes(self, payload) -> None:
         self._processes_in_flight = False
         self._process_table.update_processes(payload)
+
+    # --- process termination ------------------------------------------------
+
+    def _on_process_selection(self) -> None:
+        self._kill_button.setEnabled(self._process_table.selected_pid() is not None)
+
+    def _kill_selected(self) -> None:
+        pid = self._process_table.selected_pid()
+        if pid is None:
+            return
+        name = self._process_table.selected_name() or "?"
+
+        answer = QMessageBox.question(
+            self,
+            "Process sonlandir",
+            f"{name} (PID {pid}) sonlandirilsin mi?\n\n"
+            "Once SIGTERM gonderilir; kaydedilmemis veriler kaybolabilir.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer is not QMessageBox.StandardButton.Yes:
+            return
+
+        self._process_status.setText(f"PID {pid} sonlandiriliyor...")
+        schedule(
+            self._app_state.kill_process(pid),
+            lambda exc: self._process_status.setText(str(exc)),
+        )
+
+    def _on_process_killed(self, payload: ProcessKillResultPayload) -> None:
+        self._process_status.setText(payload.detail)
+        if payload.ok:
+            self._refresh_processes()
 
     def _on_stats(self, stats: StatsUpdatePayload) -> None:
         load = (
