@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pi-agent"
+version = "0.1.0"
+description = "Background agent that runs on the Raspberry Pi 5 and exposes the control WebSocket/HTTP API"
+requires-python = ">=3.11"
+dependencies = [
+    "pi-protocol",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "pydantic>=2.6",
+    "psutil>=5.9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "httpx>=0.27"]
+
+[project.scripts]
+pi-agent = "pi_agent.main:run"
+
+[tool.setuptools.packages.find]
+where = ["src"]

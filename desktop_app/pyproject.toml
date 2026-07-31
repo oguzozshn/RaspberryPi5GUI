@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "desktop-app"
+version = "0.1.0"
+description = "Windows PySide6 desktop client for controlling a Raspberry Pi 5 over LAN"
+requires-python = ">=3.10"
+dependencies = [
+    "pi-protocol",
+    "PySide6>=6.6",
+    "qasync>=0.27",
+    "websockets>=12.0",
+    "aiohttp>=3.9",
+    "keyring>=24.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
+
+[project.scripts]
+pi-desktop = "desktop_app.main:run"
+
+[tool.setuptools.packages.find]
+where = ["src"]

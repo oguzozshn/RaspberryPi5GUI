@@ -1,0 +1,20 @@
+[Unit]
+Description=pi-agent - Raspberry Pi remote control agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# __USER__ is substituted by install.sh with the account that ran it. The agent
+# deliberately runs as your own login user, not an isolated system user: file
+# transfers must land in your home directory with your ownership, and the
+# clipboard bridge has to reach your graphical session.
+User=__USER__
+WorkingDirectory=/opt/pi-agent
+Environment=PI_AGENT_CONFIG=/etc/pi-agent/config.toml
+ExecStart=/opt/pi-agent/.venv/bin/python -m pi_agent.main
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

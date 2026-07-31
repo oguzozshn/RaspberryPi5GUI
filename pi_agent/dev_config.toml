@@ -1,0 +1,9 @@
+# Local development config for running pi_agent off-Pi (e.g. on Windows).
+# NOT used in production - install.sh generates the real /etc/pi-agent/config.toml
+# with a random token on the Pi itself.
+[auth]
+token = "dev-local-token"
+
+[server]
+host = "127.0.0.1"
+port = 8765
