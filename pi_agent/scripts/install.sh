@@ -38,8 +38,10 @@ fi
 echo "==> Sistem paketleri kuruluyor"
 apt-get update -qq
 # python3-dev + build-essential are needed to compile lgpio (GPIO support).
+# iw: Ag sekmesindeki SSID/sinyal bilgisi icin (Pi'nin birincil baglantisi
+# genelde Wi-Fi olur ve iw Raspberry Pi OS'ta varsayilan gelmiyor).
 apt-get install -y python3-venv python3-pip python3-dev build-essential \
-  xclip wl-clipboard qrencode rsync >/dev/null
+  xclip wl-clipboard iw qrencode rsync >/dev/null
 
 echo "==> Grup uyelikleri"
 for grp in gpio dialout video docker; do
@@ -108,7 +110,19 @@ systemctl restart pi-agent
 
 echo "==> Guvenlik duvari (varsa)"
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
-  ufw allow "$DEFAULT_PORT"/tcp comment 'pi-agent' || true
+  # Kontrol kanali ws:// ve token duz metin gidiyor: portu herkese acmak yerine
+  # sadece Pi'nin kendi yerel agina ac. (Pi'nin global bir IPv6 adresi varsa
+  # 'ufw allow <port>' onu internete de acardi.)
+  # Alt agi varsayilan rotanin arayuzunden tureti: docker kurulu bir Pi'de
+  # "ilk scope-link rota" 172.17.0.0/16 (docker0) cikar ve yanlis agi acardi.
+  LAN_DEV="$(ip -4 route show default | awk '{print $5; exit}')"
+  LAN_CIDR="$(ip -4 route show scope link dev "$LAN_DEV" 2>/dev/null | awk '{print $1; exit}')"
+  if [[ -n "$LAN_CIDR" ]]; then
+    ufw allow from "$LAN_CIDR" to any port "$DEFAULT_PORT" proto tcp comment 'pi-agent (LAN)' || true
+    echo "Port $DEFAULT_PORT sadece $LAN_CIDR icin acildi."
+  else
+    ufw allow "$DEFAULT_PORT"/tcp comment 'pi-agent' || true
+  fi
 fi
 
 echo "==> Dogrulama"
