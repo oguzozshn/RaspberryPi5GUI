@@ -19,6 +19,7 @@ class Capabilities(BaseModel):
     clipboard_detail: str = ""
     systemd: bool = False
     docker: bool = False
+    docker_detail: str = ""
     gpio: bool = False
     gpio_detail: str = ""
 
@@ -239,3 +240,73 @@ class GpioWriteResultPayload(BaseModel):
     value: int
     ok: bool
     detail: str
+
+
+# --- docker -----------------------------------------------------------------
+
+
+class ContainerInfo(BaseModel):
+    id: str
+    name: str
+    image: str
+    state: str
+    status: str
+    ports: str = ""
+    created: str = ""
+
+
+class DockerListPayload(BaseModel):
+    include_stopped: bool = True
+
+
+class DockerListResultPayload(BaseModel):
+    containers: list[ContainerInfo]
+
+
+class DockerActionPayload(BaseModel):
+    container: str
+    action: Literal["start", "stop", "restart"]
+
+
+class DockerActionResultPayload(BaseModel):
+    container: str
+    action: str
+    ok: bool
+    detail: str
+
+
+class DockerLogsPayload(BaseModel):
+    container: str
+    lines: int = 200
+
+
+class DockerLogsResultPayload(BaseModel):
+    container: str
+    lines: list[str]
+
+
+# --- network ----------------------------------------------------------------
+
+
+class NetworkInterface(BaseModel):
+    name: str
+    addresses: list[str] = []
+    mac: str = ""
+    is_up: bool = False
+    speed_mbps: int | None = None
+    bytes_sent: int = 0
+    bytes_recv: int = 0
+
+
+class NetworkInfoPayload(BaseModel):
+    """No fields: the agent always reports every interface at once."""
+
+
+class NetworkInfoResultPayload(BaseModel):
+    hostname: str
+    interfaces: list[NetworkInterface]
+    default_gateway: str = ""
+    dns_servers: list[str] = []
+    wifi_interface: str = ""
+    wifi_ssid: str = ""
+    wifi_signal_dbm: int | None = None

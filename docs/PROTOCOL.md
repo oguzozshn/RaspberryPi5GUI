@@ -73,12 +73,22 @@ Tüm mesajlar tek bir JSON zarfı içinde gönderilir (`pi_protocol.envelope.Env
 | `gpio.list.result` | sunucu → istemci | `{"pins": [...], "detail": str}` | Fiziksel pin numarasına göre sıralı; `detail` kullanılan gpiochip. |
 | `gpio.write` | istemci → sunucu | `{"bcm": int, "value": 0\|1}` | Pini çıkışa alıp sürer. |
 | `gpio.write.result` | sunucu → istemci | `{"bcm", "value", "ok": bool, "detail": str}` | |
+| `docker.list` | istemci → sunucu | `{"include_stopped": bool}` | |
+| `docker.list.result` | sunucu → istemci | `{"containers": [...]}` | Çalışanlar önce, sonra alfabetik. |
+| `docker.action` | istemci → sunucu | `{"container": str, "action": "start"\|"stop"\|"restart"}` | |
+| `docker.action.result` | sunucu → istemci | `{"container", "action", "ok": bool, "detail": str}` | |
+| `docker.logs` | istemci → sunucu | `{"container": str, "lines": int}` | En fazla 2000 satır. |
+| `docker.logs.result` | sunucu → istemci | `{"container": str, "lines": [str]}` | stdout + stderr birlikte. |
+| `network.info` | istemci → sunucu | `{}` | |
+| `network.info.result` | sunucu → istemci | `NetworkInfoResultPayload` | Arayüzler, ağ geçidi, DNS, Wi-Fi SSID/sinyal. |
 
 `files.list` hata kodları: `not_found`, `not_a_directory`, `permission_denied`, `io_error`.
 Servis hata kodları: `not_available` (systemd yok), `bad_request` (geçersiz unit adı),
 `systemctl_failed`, `journalctl_failed`.
 Güç/GPIO hata kodları: `not_available` (systemd ya da GPIO yok — mesaj kullanıcıya
 gösterilecek nedeni taşır), `bad_request` (şemaya uymayan `action`/`value`).
+Docker hata kodları: `not_available` (docker yok ya da daemon'a erişilemiyor),
+`bad_request` (geçersiz container adı), `docker_failed`.
 
 `GpioPin` alanları: `bcm`, `physical` (başlıktaki pin numarası), `mode`
 (`input`/`output`), `value` (`0`/`1`, okunamadıysa `null`), `consumer` (satırı
@@ -98,7 +108,12 @@ bağlanmak yeterli olur.
 | `systemd` | `systemctl` var mı. Güç kontrolü de buna bağlı. |
 | `gpio` | GPIO başlığı sürülebiliyor mu (`lgpio` + açılabilen bir gpiochip). |
 | `gpio_detail` | Kullanılan yonga, ya da erişilemiyorsa **nedeni** (kullanıcıya gösterilir). |
-| `docker` | Faz 4'te doldurulacak, şu an daima `false`. |
+| `docker` | Docker CLI var **ve** daemon'a erişilebiliyor mu. |
+| `docker_detail` | Sunucu sürümü, ya da erişilemiyorsa **nedeni** (kullanıcıya gösterilir). |
+
+`docker` yeteneği `docker version` çalıştırılarak ölçüldüğü için kimlik doğrulama
+en fazla 5 saniye gecikebilir — ama sadece CLI kuruluyken; kurulu değilse
+`shutil.which` ile anında elenir.
 
 ### Pano köprüsü nasıl çalışır
 
@@ -157,6 +172,41 @@ Erişim `lgpio` üzerindendir: Pi 5'te RP1'i kernel'in gpiochip karakter aygıt�
   değildir. Yoksa `gpio=false` döner, `gpio_detail` nedenini taşır ve ajan geri
   kalan her şeyi yapmaya devam eder.
 
+## Docker
+
+Ajan docker CLI'ını `create_subprocess_exec` ile çağırır; docker SDK'sı ek bir
+bağımlılık olurdu ve socket izinleri açısından hiçbir şey kazandırmazdı.
+
+- **`sudo` kullanılmaz.** Ajanın hesabı `docker` grubundaysa daemon'a doğrudan
+  erişir; değilse `not_available` döner. Not: `docker` grubu üyeliği zaten root
+  ile eşdeğerdir, bu yüzden ayrıca sudoers kuralı eklemenin bir anlamı yok.
+- **Container adları doğrulanır** (`^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$`) — unit
+  adlarındaki gerekçenin aynısı: `--all` gibi bir adın CLI tarafından container
+  yerine **seçenek** olarak okunmasını engellemek.
+- **`docker ps --format {{json .}}`** satır başına bir JSON nesnesi verir (dizi
+  değil). `State` alanı 20.10 öncesi CLI'larda yok; o durumda `Status`'un ilk
+  kelimesinden türetilir.
+- **Loglarda stdout ve stderr birleştirilir.** Çoğu imaj stderr'e yazar; onu
+  atmak, insanların log görüntüleyiciyi açma sebebini atmak olurdu. İki akış
+  zaman damgasına göre değil, ardışık olarak eklenir.
+- Sadece izleme ve start/stop/restart var: `docker run`, imaj çekme ve compose
+  yok — bunlar bu arayüzün LAN token'ıyla güvenle toplayamayacağı argümanlar
+  ister.
+
+## Ağ bilgisi
+
+`network.info` tamamen okuma amaçlıdır; ağ yapılandırmasını değiştiren hiçbir
+mesaj yok — bu bağlantı üzerinden yapılacak bir hata, onu düzeltmek için gereken
+bağlantıyı keserdi.
+
+- Arayüzler, MAC/adresler ve sayaçlar `psutil`'den gelir (Windows'ta da çalışır).
+- Varsayılan ağ geçidi `/proc/net/route`'tan okunur: adresler little-endian hex
+  (`0102A8C0` = 192.168.2.1) ve birden fazla varsayılan rota varsa **en düşük
+  metrik** kazanır — kernel'in seçtiği rota da odur.
+- DNS `/etc/resolv.conf`, kablosuz arayüz listesi `/proc/net/wireless`, SSID ve
+  sinyal `iw dev <arayuz> link` çıktısından ayrıştırılır. Dosyaların/aracın
+  bulunmaması hata değildir; alanlar boş döner.
+
 ## Dosya transferi (HTTP, WS değil)
 
 Dosya baytları WS kontrol kanalından **değil**, aynı FastAPI sürecindeki ayrı
@@ -175,6 +225,11 @@ Hata kodları: 401 (token yok), 403 (token yanlış / izin yok), 404 (yol yok),
 İstemci tarafı 1 MB'lık parçalar hâlinde okur/yazar (`file_client.CHUNK_SIZE`),
 böylece bellek kullanımı dosya boyutundan bağımsız sabit kalır.
 
-## Sonraki fazlarda eklenecek türler (henüz implemente edilmedi)
+## Sürüm geçmişi
 
-- **Faz 4**: `docker.list`/`docker.action`/`docker.logs`, `network.info`.
+| `PROTOCOL_VERSION` | Eklenenler |
+|---|---|
+| 1 | auth, stats, process, files |
+| 2 | chat/clipboard köprüsü, systemd servisleri, capabilities |
+| 3 | `power.action`, `gpio.list`/`gpio.write` |
+| 4 | `docker.*`, `network.info` |

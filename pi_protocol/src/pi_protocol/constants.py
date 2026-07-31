@@ -1,6 +1,6 @@
 from enum import Enum
 
-PROTOCOL_VERSION = 3
+PROTOCOL_VERSION = 4
 
 
 class MessageType(str, Enum):
@@ -39,3 +39,13 @@ class MessageType(str, Enum):
     GPIO_LIST_RESULT = "gpio.list.result"
     GPIO_WRITE = "gpio.write"
     GPIO_WRITE_RESULT = "gpio.write.result"
+
+    DOCKER_LIST = "docker.list"
+    DOCKER_LIST_RESULT = "docker.list.result"
+    DOCKER_ACTION = "docker.action"
+    DOCKER_ACTION_RESULT = "docker.action.result"
+    DOCKER_LOGS = "docker.logs"
+    DOCKER_LOGS_RESULT = "docker.logs.result"
+
+    NETWORK_INFO = "network.info"
+    NETWORK_INFO_RESULT = "network.info.result"

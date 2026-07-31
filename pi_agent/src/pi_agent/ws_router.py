@@ -19,7 +19,17 @@ from pi_protocol import (
 
 from pi_agent.auth import is_rate_limited, record_failure, token_matches
 from pi_agent.config import AgentConfig
-from pi_agent.handlers import clipboard, files, gpio, power, processes, services, stats
+from pi_agent.handlers import (
+    clipboard,
+    docker,
+    files,
+    gpio,
+    network,
+    power,
+    processes,
+    services,
+    stats,
+)
 from pi_agent.wire import Connection
 
 logger = logging.getLogger("pi_agent.ws")
@@ -40,18 +50,26 @@ HANDLERS: dict[MessageType, Handler] = {
     MessageType.POWER_ACTION: power.handle,
     MessageType.GPIO_LIST: gpio.handle_list,
     MessageType.GPIO_WRITE: gpio.handle_write,
+    MessageType.DOCKER_LIST: docker.handle_list,
+    MessageType.DOCKER_ACTION: docker.handle_action,
+    MessageType.DOCKER_LOGS: docker.handle_logs,
+    MessageType.NETWORK_INFO: network.handle,
 }
 
 
-def current_capabilities() -> Capabilities:
+async def current_capabilities() -> Capabilities:
     """Probed per connection rather than cached at startup, so plugging in a
-    display or logging into the desktop takes effect on the next reconnect."""
+    display, logging into the desktop or starting the docker daemon takes effect
+    on the next reconnect."""
+    docker_ok, docker_detail = await docker.probe()
     return Capabilities(
         clipboard=clipboard.detect() is not None,
         clipboard_detail=clipboard.describe(),
         systemd=services.is_available(),
         gpio=gpio.is_available(),
         gpio_detail=gpio.describe(),
+        docker=docker_ok,
+        docker_detail=docker_detail,
     )
 
 
@@ -82,7 +100,7 @@ async def _authenticate(websocket: WebSocket, conn: Connection, config: AgentCon
 
     await conn.send(
         MessageType.AUTH_OK,
-        AuthOkPayload(protocol_version=PROTOCOL_VERSION, capabilities=current_capabilities()),
+        AuthOkPayload(protocol_version=PROTOCOL_VERSION, capabilities=await current_capabilities()),
     )
     return True
 

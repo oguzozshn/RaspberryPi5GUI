@@ -29,13 +29,15 @@ def app_state(qapp: QApplication) -> AppState:
         systemd=True,
         gpio=True,
         gpio_detail="pinctrl-rp1 (/dev/gpiochip4)",
+        docker=True,
+        docker_detail="docker 24.0.7",
     )
     return AppState(client, "192.168.1.42", 8765, "token")
 
 
 @pytest.fixture
 def bare_app_state(qapp: QApplication) -> AppState:
-    """A Pi with no graphical session, no systemd and no GPIO - the degraded case."""
+    """A Pi with no graphical session, systemd, GPIO or docker - the degraded case."""
     client = WsClient()
     client.capabilities = Capabilities(
         clipboard=False,
@@ -43,5 +45,7 @@ def bare_app_state(qapp: QApplication) -> AppState:
         systemd=False,
         gpio=False,
         gpio_detail="lgpio kullanilamiyor: No module named 'lgpio'",
+        docker=False,
+        docker_detail="docker kurulu degil",
     )
     return AppState(client, "192.168.1.42", 8765, "token")

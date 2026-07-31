@@ -10,6 +10,12 @@ from pi_protocol import (
     ChatMessagePayload,
     ChatSendPayload,
     ClipboardPullPayload,
+    DockerActionPayload,
+    DockerActionResultPayload,
+    DockerListPayload,
+    DockerListResultPayload,
+    DockerLogsPayload,
+    DockerLogsResultPayload,
     Envelope,
     ErrorPayload,
     FilesListPayload,
@@ -19,6 +25,8 @@ from pi_protocol import (
     GpioWritePayload,
     GpioWriteResultPayload,
     MessageType,
+    NetworkInfoPayload,
+    NetworkInfoResultPayload,
     PowerActionPayload,
     PowerActionResultPayload,
     ProcessKillPayload,
@@ -51,6 +59,10 @@ _ROUTES: list[tuple[MessageType, type[BaseModel], str, str | None]] = [
     (MessageType.POWER_ACTION_RESULT, PowerActionResultPayload, "power_action_done", None),
     (MessageType.GPIO_LIST_RESULT, GpioListResultPayload, "gpio_listed", "latest_gpio"),
     (MessageType.GPIO_WRITE_RESULT, GpioWriteResultPayload, "gpio_write_done", None),
+    (MessageType.DOCKER_LIST_RESULT, DockerListResultPayload, "containers_listed", None),
+    (MessageType.DOCKER_ACTION_RESULT, DockerActionResultPayload, "container_action_done", None),
+    (MessageType.DOCKER_LOGS_RESULT, DockerLogsResultPayload, "container_logs_received", None),
+    (MessageType.NETWORK_INFO_RESULT, NetworkInfoResultPayload, "network_info_received", "latest_network"),
 ]
 
 
@@ -70,6 +82,10 @@ class AppState(QObject):
     power_action_done = Signal(PowerActionResultPayload)
     gpio_listed = Signal(GpioListResultPayload)
     gpio_write_done = Signal(GpioWriteResultPayload)
+    containers_listed = Signal(DockerListResultPayload)
+    container_action_done = Signal(DockerActionResultPayload)
+    container_logs_received = Signal(DockerLogsResultPayload)
+    network_info_received = Signal(NetworkInfoResultPayload)
     error_received = Signal(str, str)
     connection_changed = Signal(bool, str)
 
@@ -83,6 +99,7 @@ class AppState(QObject):
         self.latest_stats: StatsUpdatePayload | None = None
         self.latest_processes: ProcessListResultPayload | None = None
         self.latest_gpio: GpioListResultPayload | None = None
+        self.latest_network: NetworkInfoResultPayload | None = None
 
         ws_client.message_received.connect(self._on_message)
         ws_client.disconnected.connect(lambda reason: self.connection_changed.emit(False, reason))
@@ -163,3 +180,21 @@ class AppState(QObject):
 
     async def write_gpio(self, bcm: int, value: int) -> None:
         await self._ws_client.send(MessageType.GPIO_WRITE, GpioWritePayload(bcm=bcm, value=value))
+
+    async def request_containers(self, include_stopped: bool = True) -> None:
+        await self._ws_client.send(
+            MessageType.DOCKER_LIST, DockerListPayload(include_stopped=include_stopped)
+        )
+
+    async def container_action(self, container: str, action: str) -> None:
+        await self._ws_client.send(
+            MessageType.DOCKER_ACTION, DockerActionPayload(container=container, action=action)
+        )
+
+    async def request_container_logs(self, container: str, lines: int = 200) -> None:
+        await self._ws_client.send(
+            MessageType.DOCKER_LOGS, DockerLogsPayload(container=container, lines=lines)
+        )
+
+    async def request_network_info(self) -> None:
+        await self._ws_client.send(MessageType.NETWORK_INFO, NetworkInfoPayload())

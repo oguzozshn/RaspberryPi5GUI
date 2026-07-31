@@ -14,14 +14,17 @@ from desktop_app.app_state import AppState
 from desktop_app.connection.file_client import FileClient
 from desktop_app.ui.pages.chat_page import ChatPage
 from desktop_app.ui.pages.dashboard_page import DashboardPage
+from desktop_app.ui.pages.docker_page import DockerPage
 from desktop_app.ui.pages.files_page import FilesPage
+from desktop_app.ui.pages.network_page import NetworkPage
 from desktop_app.ui.pages.power_page import PowerPage
 from desktop_app.ui.pages.services_page import ServicesPage
 
+_SIDEBAR = ["Dashboard", "Sohbet", "Dosyalar", "Servisler", "Guc & GPIO", "Docker", "Ag"]
+
 
 class MainWindow(QMainWindow):
-    """Sidebar + stacked-pages shell. The Docker/Network section arrives in a
-    later phase."""
+    """Sidebar + stacked-pages shell."""
 
     def __init__(self, app_state: AppState) -> None:
         super().__init__()
@@ -39,14 +42,24 @@ class MainWindow(QMainWindow):
         self._files = FilesPage(app_state, file_client)
         self._services = ServicesPage(app_state)
         self._power = PowerPage(app_state)
-        self._pages = [self._dashboard, self._chat, self._files, self._services, self._power]
+        self._docker = DockerPage(app_state)
+        self._network = NetworkPage(app_state)
+        self._pages = [
+            self._dashboard,
+            self._chat,
+            self._files,
+            self._services,
+            self._power,
+            self._docker,
+            self._network,
+        ]
 
         pages = QStackedWidget()
         for page in self._pages:
             pages.addWidget(page)
 
         sidebar = QListWidget()
-        sidebar.addItems(["Dashboard", "Sohbet", "Dosyalar", "Servisler", "Guc & GPIO"])
+        sidebar.addItems(_SIDEBAR)
         sidebar.setCurrentRow(0)
         sidebar.setMaximumWidth(160)
         sidebar.currentRowChanged.connect(pages.setCurrentIndex)

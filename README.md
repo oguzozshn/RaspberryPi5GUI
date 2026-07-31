@@ -11,7 +11,7 @@ desktop_app/   # Windows'ta çalışan PySide6 istemcisi
 
 Mesaj sözleşmesi ve transport kararları için bkz. `docs/PROTOCOL.md`.
 
-## Durum: Faz 3 tamamlandı
+## Durum: Faz 4 tamamlandı (v1 kapsamı bitti)
 
 Çalışan özellikler:
 
@@ -27,8 +27,10 @@ Mesaj sözleşmesi ve transport kararları için bkz. `docs/PROTOCOL.md`.
   başlat, `journalctl` log görüntüleyici.
 - **Güç & GPIO** — onay isteyen yeniden başlatma/kapatma; 40-pin başlığın canlı
   görünümü (mod, seviye, satırı tutan sürücü) ve seçili pini HIGH/LOW sürme.
-
-Henüz **yok** (Faz 4): Docker + ağ bilgisi.
+- **Docker** — container listesi (durum/imaj/portlar), başlat/durdur/yeniden
+  başlat, `docker logs` görüntüleyici, ad ve imaja göre filtreleme.
+- **Ağ** — arayüzler, IP/MAC adresleri, trafik sayaçları, varsayılan ağ geçidi,
+  DNS sunucuları ve Wi-Fi SSID/sinyal gücü.
 
 ## Pi'ye kurulum
 
@@ -115,6 +117,15 @@ $env:PI_AGENT_CONFIG = "pi_agent\dev_config.toml"
   yönünde değişir; sürülen bir pini tekrar girişe almak için agent'ı yeniden
   başlatmak gerekir (`sudo systemctl restart pi-agent`).
 - **GPIO seviyeleri anlık okunur**, canlı akış değil — "Yenile" ile tazelenir.
+- **Docker'ı kurmak size ait.** Ajan docker'ı kurmaz; kuruluysa kullanır. Kurulum
+  sonrası hesabınızın `docker` grubuna eklenmesi gerekir (`install.sh` grubu
+  varsa ekler) ve üyeliğin geçerli olması için `sudo systemctl restart pi-agent`.
+- **Docker sekmesi `docker run`/imaj çekme/compose yapmaz** — sadece mevcut
+  container'ları izleme ve başlat/durdur/yeniden başlat.
+- **Container logları stdout+stderr'i birleştirir**, zaman damgasına göre
+  harmanlamaz; iki akışın satırları ardışık görünür.
+- **Ağ sekmesi salt okunur.** IP/Wi-Fi ayarı değiştirme yok — bu bağlantı
+  üzerinden yapılacak bir hata, düzeltmek için gereken bağlantıyı keserdi.
 - **Windows Defender/Firewall ilk çalıştırmada uyarı verebilir** (imzasız uygulama).
 - **`raspberrypi.local` Windows'ta her zaman çözümlenmeyebilir** — kurulum
   ekranına IP adresi girmek daha güvenilir; router'da DHCP rezervasyonu önerilir.
