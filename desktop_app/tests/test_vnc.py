@@ -38,9 +38,24 @@ def test_find_client_prefers_an_installed_path(monkeypatch: pytest.MonkeyPatch, 
 
 def test_find_client_falls_back_to_path(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(vnc, "_CANDIDATES", ())
+    monkeypatch.setattr(vnc, "_search_roots", lambda: ())
     monkeypatch.setattr(vnc.shutil, "which", lambda name: r"C:\bin\vncviewer.exe")
 
     assert vnc.find_client() == Path(r"C:\bin\vncviewer.exe")
+
+
+def test_find_client_searches_program_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Saticilar surumden surume klasor adini degistiriyor (RealVNC 7 'VNC
+    Viewer', 8 'VNC Connect Viewer'), sabit yol listesi tek basina yetmez."""
+    installed = tmp_path / "RealVNC" / "VNC Connect Viewer" / "vncviewer.exe"
+    installed.parent.mkdir(parents=True)
+    installed.write_text("")
+
+    monkeypatch.setattr(vnc, "_CANDIDATES", ())
+    monkeypatch.setattr(vnc, "_search_roots", lambda: (tmp_path,))
+    monkeypatch.setattr(vnc.shutil, "which", lambda name: None)
+
+    assert vnc.find_client() == installed
 
 
 def test_launch_without_a_client_explains_how_to_install(monkeypatch: pytest.MonkeyPatch) -> None:

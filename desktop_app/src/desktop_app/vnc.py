@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 
@@ -16,13 +17,39 @@ _CANDIDATES = (
     Path(r"C:\Program Files (x86)\TightVNC\tvnviewer.exe"),
 )
 
-INSTALL_HINT = "VNC istemcisi bulunamadi. Kurmak icin: winget install RealVNC.VNCViewer"
+_EXE_NAMES = ("vncviewer.exe", "vncviewer64.exe", "tvnviewer.exe")
+
+INSTALL_HINT = (
+    "VNC istemcisi bulunamadi. Kurmak icin: winget install RealVNC.VNCConnect.Viewer"
+)
+
+
+def _search_roots() -> tuple[Path, ...]:
+    names = ("ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA")
+    return tuple(Path(value) for name in names if (value := os.environ.get(name)))
 
 
 def find_client() -> Path | None:
+    """Bilinen yollar, sonra Program Files altinda sinirli bir arama.
+
+    Sabit yol listesi tek basina yetmiyor: saticilar surumden surume klasor adi
+    degistiriyor (RealVNC 7 'VNC Viewer', 8 'VNC Connect Viewer'). PATH'e de
+    guvenilemez, hicbiri kendini eklemiyor.
+    """
     for candidate in _CANDIDATES:
         if candidate.is_file():
             return candidate
+
+    for root in _search_roots():
+        for name in _EXE_NAMES:
+            for pattern in (name, f"*/{name}", f"*/*/{name}"):
+                try:
+                    match = next(root.glob(pattern), None)
+                except OSError:  # pragma: no cover - erisilemeyen dizin
+                    continue
+                if match is not None and match.is_file():
+                    return match
+
     for name in ("vncviewer", "tvnviewer"):
         if (found := shutil.which(name)) is not None:
             return Path(found)
