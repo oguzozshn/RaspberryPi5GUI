@@ -44,7 +44,7 @@ from pi_protocol import (
     StatsUpdatePayload,
 )
 
-from desktop_app.connection.ws_client import WsClient
+from desktop_app.connection.ws_client import AuthResult, WsClient
 
 logger = logging.getLogger("desktop_app.app_state")
 
@@ -92,7 +92,6 @@ class AppState(QObject):
     network_info_received = Signal(NetworkInfoResultPayload)
     error_received = Signal(str, str)
     connection_changed = Signal(bool, str)
-    reconnecting = Signal(int, float)
 
     def __init__(self, ws_client: WsClient, host: str, port: int, token: str) -> None:
         super().__init__()
@@ -109,11 +108,16 @@ class AppState(QObject):
         ws_client.message_received.connect(self._on_message)
         ws_client.disconnected.connect(lambda reason: self.connection_changed.emit(False, reason))
         ws_client.connected.connect(lambda: self.connection_changed.emit(True, ""))
-        ws_client.reconnecting.connect(self.reconnecting.emit)
 
     @property
     def capabilities(self) -> Capabilities:
         return self._ws_client.capabilities
+
+    async def reconnect(self) -> None:
+        """Retry the connection once. Raises so the caller can show why it failed."""
+        result = await self._ws_client.reconnect()
+        if result is not AuthResult.OK:
+            raise RuntimeError("token reddedildi")
 
     # --- incoming ----------------------------------------------------------
 

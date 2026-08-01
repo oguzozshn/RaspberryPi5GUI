@@ -5,12 +5,14 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QMainWindow,
+    QPushButton,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from desktop_app.app_state import AppState
+from desktop_app.async_utils import schedule
 from desktop_app.connection.file_client import FileClient
 from desktop_app.ui.pages.chat_page import ChatPage
 from desktop_app.ui.pages.dashboard_page import DashboardPage
@@ -34,9 +36,16 @@ class MainWindow(QMainWindow):
         self._app_state = app_state
         self._status_label = QLabel()
         self._was_disconnected = False
+
+        # Retrying is explicit: the Pi usually comes back because someone walked
+        # over and pressed its power button, and a client reconnecting on its own
+        # schedule would redraw the screen at a moment the user did not choose.
+        self._reconnect_button = QPushButton("Yeniden Baglan")
+        self._reconnect_button.clicked.connect(self._reconnect)
+        self._reconnect_button.hide()
+
         self._set_connected(True)
         app_state.connection_changed.connect(self._on_connection_changed)
-        app_state.reconnecting.connect(self._on_reconnecting)
 
         file_client = FileClient(app_state.host, app_state.port, app_state.token)
         self._dashboard = DashboardPage(app_state)
@@ -66,9 +75,14 @@ class MainWindow(QMainWindow):
         sidebar.setMaximumWidth(160)
         sidebar.currentRowChanged.connect(pages.setCurrentIndex)
 
+        status_row = QHBoxLayout()
+        status_row.addWidget(self._status_label)
+        status_row.addWidget(self._reconnect_button)
+        status_row.addStretch(1)
+
         central = QWidget()
         outer = QVBoxLayout(central)
-        outer.addWidget(self._status_label)
+        outer.addLayout(status_row)
         body = QHBoxLayout()
         body.addWidget(sidebar)
         body.addWidget(pages, stretch=1)
@@ -80,8 +94,21 @@ class MainWindow(QMainWindow):
         for page in self._pages:
             page.start()
 
+    def _reconnect(self) -> None:
+        self._reconnect_button.setEnabled(False)
+        self._status_label.setText("… Yeniden baglaniliyor")
+        self._status_label.setStyleSheet("color: #e67e22;")
+        schedule(self._app_state.reconnect(), self._on_reconnect_failed)
+
+    def _on_reconnect_failed(self, error: BaseException) -> None:
+        self._status_label.setText(f"○ Baglanilamadi ({error})")
+        self._status_label.setStyleSheet("color: #c0392b;")
+        self._reconnect_button.setEnabled(True)
+
     def _on_connection_changed(self, connected: bool, reason: str = "") -> None:
         self._set_connected(connected, reason)
+        self._reconnect_button.setVisible(not connected)
+        self._reconnect_button.setEnabled(not connected)
         if not connected:
             self._was_disconnected = True
             return
@@ -92,12 +119,6 @@ class MainWindow(QMainWindow):
             # fetches instead of leaving a screen full of stale rows.
             self._was_disconnected = False
             self.start()
-
-    def _on_reconnecting(self, attempt: int, delay: float) -> None:
-        self._status_label.setText(
-            f"○ Baglanti kesildi — yeniden deneniyor ({attempt}. deneme, {delay:.0f} sn)"
-        )
-        self._status_label.setStyleSheet("color: #e67e22;")
 
     def _set_connected(self, connected: bool, reason: str = "") -> None:
         if connected:

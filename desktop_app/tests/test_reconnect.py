@@ -3,19 +3,14 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from PySide6.QtWidgets import QApplication
 
 from desktop_app.app_state import AppState
-from desktop_app.connection import ws_client as ws_client_module
 from desktop_app.connection.ws_client import AuthResult, WsClient
 from desktop_app.ui.main_window import MainWindow
 
 
 class _FakeConnect:
-    """Stands in for WsClient.connect: fails while the Pi is still booting,
-    then succeeds."""
-
-    def __init__(self, failures: int, result: AuthResult = AuthResult.OK) -> None:
+    def __init__(self, failures: int = 0, result: AuthResult = AuthResult.OK) -> None:
         self.failures = failures
         self.result = result
         self.calls: list[tuple[str, int, str]] = []
@@ -27,13 +22,6 @@ class _FakeConnect:
         return self.result
 
 
-@pytest.fixture(autouse=True)
-def _instant_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep the retry schedule's shape but drop the waiting."""
-    monkeypatch.setattr(ws_client_module, "_BACKOFF_SECONDS", (0, 0, 0, 0))
-    monkeypatch.setattr(ws_client_module, "_BACKOFF_MAX_SECONDS", 0)
-
-
 def _client(fake: _FakeConnect) -> WsClient:
     client = WsClient()
     client._credentials = ("192.168.0.42", 8765, "token")
@@ -41,99 +29,93 @@ def _client(fake: _FakeConnect) -> WsClient:
     return client
 
 
-# --- retry loop -------------------------------------------------------------
+# --- client -----------------------------------------------------------------
 
 
-def test_reconnects_once_the_pi_comes_back() -> None:
-    """The app's own reboot button guarantees a drop, so recovery cannot depend
-    on the user restarting the application."""
-    fake = _FakeConnect(failures=3)
+def test_a_drop_never_retries_by_itself() -> None:
+    """Yeniden baglanma kullanicinin karari: Pi genelde biri gidip guc dugmesine
+    bastigi icin geri geliyor, kendi takvimiyle baglanan bir istemci ekrani
+    kullanicinin secmedigi bir anda degistirirdi."""
+    fake = _FakeConnect()
     client = _client(fake)
+    dropped: list[str] = []
+    client.disconnected.connect(dropped.append)
 
     async def main() -> None:
-        client._schedule_reconnect()
-        await client._reconnect_task
-
-    asyncio.run(main())
-    assert len(fake.calls) == 4, "Pi acilana kadar denemeye devam etmeli"
-    assert fake.calls[-1] == ("192.168.0.42", 8765, "token")
-
-
-def test_every_attempt_is_reported(qapp: QApplication) -> None:
-    fake = _FakeConnect(failures=2)
-    client = _client(fake)
-    attempts: list[int] = []
-    client.reconnecting.connect(lambda attempt, delay: attempts.append(attempt))
-
-    async def main() -> None:
-        client._schedule_reconnect()
-        await client._reconnect_task
-
-    asyncio.run(main())
-    assert attempts == [1, 2, 3], "her deneme arayuze bildirilmeli"
-
-
-def test_a_rejected_token_stops_the_loop() -> None:
-    """Retrying a wrong token forever would only feed the agent's rate limiter."""
-    fake = _FakeConnect(failures=0, result=AuthResult.REJECTED)
-    client = _client(fake)
-
-    async def main() -> None:
-        client._schedule_reconnect()
-        await client._reconnect_task
-
-    asyncio.run(main())
-    assert len(fake.calls) == 1
-
-
-def test_close_stops_the_retry_loop() -> None:
-    fake = _FakeConnect(failures=1000)  # asla basarili olmaz
-    client = _client(fake)
-
-    async def main() -> tuple[int, int]:
-        client._schedule_reconnect()
-        await asyncio.sleep(0)
-        await client.close()
-        after_close = len(fake.calls)
+        client.disconnected.emit("1006")
         for _ in range(5):
             await asyncio.sleep(0)
-        return after_close, len(fake.calls)
 
-    after_close, later = asyncio.run(main())
-    assert later == after_close, "kapatildiktan sonra yeni deneme yapilmamali"
-    assert client._reconnect_task is None
+    asyncio.run(main())
+    assert dropped == ["1006"], "kopma bildirilmeli"
+    assert fake.calls == [], "kendiliginden deneme olmamali"
 
 
-def test_a_second_drop_does_not_start_a_parallel_loop() -> None:
+def test_reconnect_reuses_the_last_good_credentials() -> None:
+    fake = _FakeConnect()
+    client = _client(fake)
+
+    assert asyncio.run(client.reconnect()) is AuthResult.OK
+    assert fake.calls == [("192.168.0.42", 8765, "token")], "kurulum ekrani tekrar sorulmamali"
+
+
+def test_reconnect_propagates_the_failure() -> None:
+    """Pi hala kapaliysa sebep cagirana ulasmali, sessizce yutulmamali."""
     fake = _FakeConnect(failures=1)
     client = _client(fake)
 
-    async def main() -> None:
-        client._schedule_reconnect()
-        first = client._reconnect_task
-        client._schedule_reconnect()
-        assert client._reconnect_task is first, "ikinci cagri yeni dongu acmamali"
-        await first
-
-    asyncio.run(main())
-    assert len(fake.calls) == 2
+    with pytest.raises(OSError):
+        asyncio.run(client.reconnect())
+    assert len(fake.calls) == 1, "tek deneme"
 
 
-# --- what the window shows --------------------------------------------------
+def test_reconnect_without_a_previous_connection_is_an_error() -> None:
+    client = WsClient()
+    with pytest.raises(RuntimeError):
+        asyncio.run(client.reconnect())
 
 
-def test_status_shows_retry_progress(app_state: AppState) -> None:
+def test_app_state_reconnect_raises_on_a_rejected_token(app_state: AppState, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def rejected() -> AuthResult:
+        return AuthResult.REJECTED
+
+    monkeypatch.setattr(app_state._ws_client, "reconnect", rejected)
+    with pytest.raises(RuntimeError):
+        asyncio.run(app_state.reconnect())
+
+
+# --- window -----------------------------------------------------------------
+
+
+def test_button_appears_only_while_disconnected(app_state: AppState) -> None:
     window = MainWindow(app_state)
+    assert window._reconnect_button.isHidden()
+
     window._on_connection_changed(False, "1006")
+    assert not window._reconnect_button.isHidden()
+    assert window._reconnect_button.isEnabled()
     assert "kesildi" in window._status_label.text()
 
-    window._on_reconnecting(3, 4.0)
-    assert "3. deneme" in window._status_label.text()
-    assert "e67e22" in window._status_label.styleSheet()
+    window._on_connection_changed(True, "")
+    assert window._reconnect_button.isHidden()
 
 
-def test_pages_refetch_after_a_reconnect(app_state: AppState, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Stale rows from before the reboot must not be left on screen."""
+def test_failed_attempt_leaves_the_button_usable(app_state: AppState) -> None:
+    window = MainWindow(app_state)
+    window._on_connection_changed(False, "1006")
+
+    window._reconnect()  # calisan event loop yok; schedule() coroutine'i birakir
+    assert not window._reconnect_button.isEnabled(), "deneme sirasinda tekrar basilamamali"
+
+    window._on_reconnect_failed(OSError("Pi hala kapali"))
+    assert "Baglanilamadi" in window._status_label.text()
+    assert "Pi hala kapali" in window._status_label.text()
+    assert window._reconnect_button.isEnabled(), "tekrar denenebilmeli"
+
+
+def test_pages_refetch_after_a_successful_reconnect(app_state: AppState, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pi gidip gelirken ekranda kalanlar bayat; capabilities de el sikismada
+    yeniden okundu."""
     window = MainWindow(app_state)
     started: list[int] = []
     monkeypatch.setattr(window, "start", lambda: started.append(1))
@@ -143,4 +125,4 @@ def test_pages_refetch_after_a_reconnect(app_state: AppState, monkeypatch: pytes
 
     window._on_connection_changed(False, "1006")
     window._on_connection_changed(True, "")
-    assert started == [1], "kopmadan sonra geri donunce yeniden yuklenmeli"
+    assert started == [1]
