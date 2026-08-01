@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import socket
+
+import pytest
 from fastapi.testclient import TestClient
 
 from pi_agent.handlers import network
@@ -108,6 +111,50 @@ def test_collect_interfaces_reports_the_local_machine() -> None:
     assert interfaces, "en az bir arayuz raporlanmali"
     assert any(i.addresses for i in interfaces)
     assert all(i.name for i in interfaces)
+
+
+@pytest.mark.parametrize("name", ["lo", "docker0", "br-dc1c73c834e1", "veth305278d", "wg0"])
+def test_virtual_interfaces_are_recognised(name: str) -> None:
+    assert network.is_virtual(name)
+
+
+@pytest.mark.parametrize("name", ["eth0", "wlan0", "enp3s0", "end0"])
+def test_physical_interfaces_are_not_flagged_virtual(name: str) -> None:
+    assert not network.is_virtual(name)
+
+
+def test_physical_interfaces_sort_above_container_bridges(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Seen on the real Pi: with docker running, br-*/veth* sorted alphabetically
+    above wlan0 and pushed the only interesting interface to fourth place."""
+    import collections
+
+    Addr = collections.namedtuple("Addr", "family address netmask broadcast ptp")
+    Stat = collections.namedtuple("Stat", "isup duplex speed mtu")
+    Counter = collections.namedtuple("Counter", "bytes_sent bytes_recv")
+
+    def addr(ip: str) -> Addr:
+        return Addr(socket.AF_INET, ip, None, None, None)
+
+    monkeypatch.setattr(
+        network.psutil,
+        "net_if_addrs",
+        lambda: {
+            "br-dc1c73c834e1": [addr("172.18.0.1")],
+            "lo": [addr("127.0.0.1")],
+            "veth305278d": [addr("169.254.1.1")],
+            "wlan0": [addr("192.168.1.115")],
+            "docker0": [addr("172.17.0.1")],
+        },
+    )
+    monkeypatch.setattr(
+        network.psutil, "net_if_stats", lambda: {
+            name: Stat(True, "", 0, 1500)
+            for name in ("br-dc1c73c834e1", "lo", "veth305278d", "wlan0", "docker0")
+        }
+    )
+    monkeypatch.setattr(network.psutil, "net_io_counters", lambda pernic: {})
+
+    assert [i.name for i in network.collect_interfaces()][0] == "wlan0"
 
 
 def test_collect_static_tolerates_missing_proc_files() -> None:

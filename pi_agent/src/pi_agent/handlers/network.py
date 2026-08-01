@@ -95,6 +95,15 @@ def parse_iw_link(text: str) -> tuple[str, int | None]:
     return ssid, signal
 
 
+# Loopback plus the interface families container and VM runtimes create. Matched
+# by name because psutil exposes nothing that distinguishes them.
+_VIRTUAL_PREFIXES = ("docker", "br-", "veth", "virbr", "vmnet", "tun", "tap", "wg")
+
+
+def is_virtual(name: str) -> bool:
+    return name == "lo" or name.startswith(_VIRTUAL_PREFIXES)
+
+
 def _read(path: Path) -> str:
     """Read a /proc or /etc file, tolerating its absence: on Windows (dev) none
     of them exist, and a container may not expose all of them either."""
@@ -139,8 +148,10 @@ def collect_interfaces() -> list[NetworkInterface]:
             )
         )
 
-    # Up interfaces with an address first: the one you care about is on top.
-    interfaces.sort(key=lambda i: (not i.is_up, not i.addresses, i.name))
+    # Up-and-addressed physical interfaces first: on a Pi running docker the
+    # bridges and veth pairs otherwise sort above wlan0 and bury the one
+    # interface anybody opened this tab to look at.
+    interfaces.sort(key=lambda i: (not i.is_up, not i.addresses, is_virtual(i.name), i.name))
     return interfaces
 
 
