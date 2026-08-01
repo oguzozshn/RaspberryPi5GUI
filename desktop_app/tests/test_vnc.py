@@ -28,6 +28,12 @@ def test_other_ports_use_the_explicit_port_form() -> None:
 # --- istemci bulma ----------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _no_saved_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Testler gercek QSettings'e bakmasin."""
+    monkeypatch.setattr(vnc, "saved_client", lambda: None)
+
+
 def test_find_client_prefers_an_installed_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     fake = tmp_path / "vncviewer.exe"
     fake.write_text("")
@@ -56,6 +62,28 @@ def test_find_client_searches_program_files(monkeypatch: pytest.MonkeyPatch, tmp
     monkeypatch.setattr(vnc.shutil, "which", lambda name: None)
 
     assert vnc.find_client() == installed
+
+
+def test_a_remembered_client_wins_over_searching(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Kurulumsuz dagitilan istemciler herhangi bir klasorde olabilir; kullanici
+    bir kez sectiginde arama devreye girmemeli."""
+    chosen = tmp_path / "vncviewer64-1.16.2.exe"
+    chosen.write_text("")
+    monkeypatch.setattr(vnc, "saved_client", lambda: chosen)
+    monkeypatch.setattr(vnc, "_CANDIDATES", ())
+    monkeypatch.setattr(vnc, "_search_roots", lambda: ())
+
+    assert vnc.find_client() == chosen
+
+
+def test_a_remembered_client_that_vanished_is_ignored(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from desktop_app import settings as settings_module
+
+    class _Settings:
+        vnc_client_path = str(tmp_path / "silinmis.exe")
+
+    monkeypatch.setattr(settings_module, "Settings", lambda: _Settings())
+    assert vnc.saved_client() is None
 
 
 def test_launch_without_a_client_explains_how_to_install(monkeypatch: pytest.MonkeyPatch) -> None:

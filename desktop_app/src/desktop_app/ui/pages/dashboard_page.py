@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
+    QFileDialog,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -114,10 +117,39 @@ class DashboardPage(QWidget):
 
     def _open_desktop(self) -> None:
         capabilities = self._app_state.capabilities
+        if vnc.find_client() is None and not self._ask_for_client():
+            return
+
         ok, detail = vnc.launch(self._app_state.host, capabilities.vnc_port)
         self._vnc_status.setText(detail)
         if not ok:
             QMessageBox.information(self, "Masaustunu ac", detail)
+
+    def _ask_for_client(self) -> bool:
+        """Istemci bulunamadi: kullaniciya sectirip yolu hatirla.
+
+        Aramaya guvenmek yetmiyor, cunku istemcilerin bir kismi kurulumsuz tek
+        dosya olarak dagitiliyor ve herhangi bir klasorde durabiliyor.
+        """
+        answer = QMessageBox.question(
+            self,
+            "VNC istemcisi bulunamadi",
+            f"{vnc.INSTALL_HINT}\n\nKurulu bir istemciniz varsa dosyasini "
+            "secebilirsiniz (bir kez sorulur).",
+            QMessageBox.StandardButton.Open | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Open,
+        )
+        if answer != QMessageBox.StandardButton.Open:
+            return False
+
+        path, _filter = QFileDialog.getOpenFileName(
+            self, "VNC istemcisini secin", "", "Programlar (*.exe);;Tum dosyalar (*)"
+        )
+        if not path:
+            return False
+        vnc.remember_client(path)
+        self._vnc_status.setText(f"istemci secildi: {Path(path).name}")
+        return True
 
     def _refresh_processes(self) -> None:
         # Collecting the process list takes a noticeable fraction of a second, so

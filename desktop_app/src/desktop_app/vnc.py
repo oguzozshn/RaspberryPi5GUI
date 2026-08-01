@@ -34,13 +34,32 @@ def _search_roots() -> tuple[Path, ...]:
     return tuple(Path(value) for name in names if (value := os.environ.get(name)))
 
 
+def saved_client() -> Path | None:
+    """Kullanicinin daha once sectigi istemci, hala duruyorsa."""
+    from desktop_app.settings import Settings
+
+    path = Settings().vnc_client_path
+    if path and Path(path).is_file():
+        return Path(path)
+    return None
+
+
+def remember_client(path: str) -> None:
+    from desktop_app.settings import Settings
+
+    Settings().vnc_client_path = path
+
+
 def find_client() -> Path | None:
-    """Bilinen yollar, sonra Program Files altinda sinirli bir arama.
+    """Once kullanicinin sectigi yol, sonra bilinen yerler, sonra sinirli arama.
 
     Sabit yol listesi tek basina yetmiyor: saticilar surumden surume klasor adi
     degistiriyor (RealVNC 7 'VNC Viewer', 8 'VNC Connect Viewer'). PATH'e de
     guvenilemez, hicbiri kendini eklemiyor.
     """
+    if (chosen := saved_client()) is not None:
+        return chosen
+
     for candidate in _CANDIDATES:
         if candidate.is_file():
             return candidate

@@ -38,5 +38,16 @@ class Settings:
     def token(self, value: str) -> None:
         keyring.set_password(_KEYRING_SERVICE, _KEYRING_USERNAME, value)
 
+    @property
+    def vnc_client_path(self) -> str:
+        """Kullanicinin elle secdigi VNC istemcisi. Bos ise uygulama bilinen
+        yerlerde arar; istemciler kurulumsuz da dagitildigi icin (TigerVNC tek
+        exe) aramanin her zaman bulmasi beklenemez."""
+        return str(self._qsettings.value("vnc/client_path", ""))
+
+    @vnc_client_path.setter
+    def vnc_client_path(self, value: str) -> None:
+        self._qsettings.setValue("vnc/client_path", value)
+
     def has_saved_connection(self) -> bool:
         return bool(self.host) and self.token is not None
