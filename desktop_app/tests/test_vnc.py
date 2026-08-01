@@ -86,6 +86,21 @@ def test_a_remembered_client_that_vanished_is_ignored(monkeypatch: pytest.Monkey
     assert vnc.saved_client() is None
 
 
+@pytest.mark.parametrize(
+    "name",
+    ["tigervnc64-1.16.0.exe", "VNC-Viewer-Setup.exe", "tightvnc-2.8.88-setup.exe", "install.exe"],
+)
+def test_installers_are_recognised(name: str) -> None:
+    """Indirilen dosya 'tigervnc64-...exe', istemci ise 'vncviewer.exe' oluyor;
+    yanlisini kaydetmek dugmeyi her seferinde kurulum acan bir seye cevirir."""
+    assert vnc.looks_like_installer(rf"C:\Program Files\{name}")
+
+
+@pytest.mark.parametrize("name", ["vncviewer.exe", "vncviewer64.exe", "tvnviewer.exe"])
+def test_real_clients_are_not_flagged(name: str) -> None:
+    assert not vnc.looks_like_installer(rf"C:\Program Files\TigerVNC\{name}")
+
+
 def test_launch_without_a_client_explains_how_to_install(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(vnc, "find_client", lambda: None)
     monkeypatch.setattr(vnc.QDesktopServices, "openUrl", staticmethod(lambda url: False))

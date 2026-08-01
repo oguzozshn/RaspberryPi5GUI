@@ -44,10 +44,26 @@ def saved_client() -> Path | None:
     return None
 
 
+# Kurulum sihirbazlarinin adlarinda gecen kaliplar. Kolayca karistiriliyor:
+# indirilen dosya "tigervnc64-1.16.0.exe" iken istemci "vncviewer.exe" oluyor ve
+# yanlisi kaydedilirse dugme her seferinde kurulumu acar.
+_INSTALLER_HINTS = ("setup", "install", "tigervnc64", "tightvnc-", "-setup")
+
+
+def looks_like_installer(path: str) -> bool:
+    return any(hint in Path(path).name.lower() for hint in _INSTALLER_HINTS)
+
+
 def remember_client(path: str) -> None:
     from desktop_app.settings import Settings
 
     Settings().vnc_client_path = path
+
+
+def forget_client() -> None:
+    from desktop_app.settings import Settings
+
+    Settings().vnc_client_path = ""
 
 
 def find_client() -> Path | None:

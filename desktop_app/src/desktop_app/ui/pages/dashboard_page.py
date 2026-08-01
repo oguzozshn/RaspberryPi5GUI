@@ -147,6 +147,15 @@ class DashboardPage(QWidget):
         )
         if not path:
             return False
+        if vnc.looks_like_installer(path):
+            QMessageBox.warning(
+                self,
+                "Bu bir kurulum dosyasi",
+                f"{Path(path).name} kurulum sihirbazi gibi gorunuyor.\n\n"
+                "Once onu calistirip programi kurun, sonra kurulan istemciyi "
+                "secin (ornegin C:\\Program Files\\TigerVNC\\vncviewer.exe).",
+            )
+            return False
         vnc.remember_client(path)
         self._vnc_status.setText(f"istemci secildi: {Path(path).name}")
         return True
