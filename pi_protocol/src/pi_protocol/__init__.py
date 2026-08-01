@@ -18,6 +18,10 @@ from pi_protocol.messages import (
     DockerLogsPayload,
     DockerLogsResultPayload,
     FileEntry,
+    FilesCreatePayload,
+    FilesCreateResultPayload,
+    FilesDeletePayload,
+    FilesDeleteResultPayload,
     FilesListPayload,
     FilesListResultPayload,
     GpioListPayload,
@@ -47,6 +51,12 @@ from pi_protocol.messages import (
     ServiceLogsResultPayload,
     StatsUpdatePayload,
     SwapStats,
+    TerminalClosePayload,
+    TerminalExitPayload,
+    TerminalInputPayload,
+    TerminalOpenPayload,
+    TerminalOutputPayload,
+    TerminalResizePayload,
 )
 
 __all__ = [
@@ -100,4 +110,14 @@ __all__ = [
     "NetworkInterface",
     "NetworkInfoPayload",
     "NetworkInfoResultPayload",
+    "FilesCreatePayload",
+    "FilesCreateResultPayload",
+    "FilesDeletePayload",
+    "FilesDeleteResultPayload",
+    "TerminalOpenPayload",
+    "TerminalInputPayload",
+    "TerminalResizePayload",
+    "TerminalClosePayload",
+    "TerminalOutputPayload",
+    "TerminalExitPayload",
 ]

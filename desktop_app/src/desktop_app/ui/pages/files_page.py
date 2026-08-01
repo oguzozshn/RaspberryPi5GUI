@@ -10,8 +10,10 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -54,12 +56,25 @@ class FilesPage(QWidget):
         self._download_button = QPushButton("Indir")
         self._download_button.clicked.connect(self._download_selected)
         self._download_button.setEnabled(False)
+        self._new_folder_button = QPushButton("Yeni klasor")
+        self._new_file_button = QPushButton("Yeni dosya")
+        self._delete_button = QPushButton("Sil")
+        self._new_folder_button.clicked.connect(lambda: self._create(is_dir=True))
+        self._new_file_button.clicked.connect(lambda: self._create(is_dir=False))
+        self._delete_button.clicked.connect(self._delete_selected)
+        self._delete_button.setEnabled(False)
 
         toolbar = QHBoxLayout()
         toolbar.addWidget(up_button)
         toolbar.addWidget(self._path_edit, stretch=1)
         toolbar.addWidget(refresh_button)
         toolbar.addWidget(self._download_button)
+
+        actions = QHBoxLayout()
+        actions.addWidget(self._new_folder_button)
+        actions.addWidget(self._new_file_button)
+        actions.addWidget(self._delete_button)
+        actions.addStretch(1)
 
         self._table = QTableWidget(0, len(_COLUMNS))
         self._table.setHorizontalHeaderLabels(_COLUMNS)
@@ -77,12 +92,15 @@ class FilesPage(QWidget):
 
         layout = QVBoxLayout(self)
         layout.addLayout(toolbar)
+        layout.addLayout(actions)
         layout.addWidget(self._table, stretch=1)
         layout.addWidget(self._status)
         layout.addWidget(QLabel("Transferler"))
         layout.addWidget(self._transfers)
 
         app_state.files_listed.connect(self._on_files_listed)
+        app_state.file_created.connect(self._on_created)
+        app_state.file_deleted.connect(self._on_deleted)
         app_state.error_received.connect(self._on_error)
 
     def start(self) -> None:
@@ -132,6 +150,63 @@ class FilesPage(QWidget):
     def _on_selection_changed(self) -> None:
         entry = self._selected_entry()
         self._download_button.setEnabled(entry is not None and not entry.is_dir)
+        self._delete_button.setEnabled(entry is not None)
+
+    # --- create / delete ----------------------------------------------------
+
+    def _create(self, is_dir: bool) -> None:
+        label = "Klasor adi" if is_dir else "Dosya adi"
+        name, accepted = QInputDialog.getText(self, f"{label} girin", f"{label}:")
+        name = name.strip()
+        if not accepted or not name:
+            return
+        if "/" in name or name in (".", ".."):
+            self._status.setText(f"Gecersiz ad: {name}")
+            return
+
+        target = posixpath.join(self._current_path, name)
+        self._status.setText(f"{target} olusturuluyor...")
+        schedule(
+            self._app_state.create_file(target, is_dir),
+            lambda exc: self._status.setText(str(exc)),
+        )
+
+    def _delete_selected(self) -> None:
+        entry = self._selected_entry()
+        if entry is None:
+            return
+
+        extra = (
+            "\n\nBu bir klasor: icindeki her sey de silinecek."
+            if entry.is_dir
+            else ""
+        )
+        answer = QMessageBox.question(
+            self,
+            "Sil",
+            f"{entry.path} silinsin mi?\n\nGeri alinamaz; cop kutusu yok.{extra}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        # Deger karsilastirmasi: question() enum degil int donduruyor.
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        self._status.setText(f"{entry.path} siliniyor...")
+        schedule(
+            self._app_state.delete_file(entry.path, recursive=entry.is_dir),
+            lambda exc: self._status.setText(str(exc)),
+        )
+
+    def _on_created(self, payload) -> None:
+        self._status.setText(payload.detail)
+        if payload.ok:
+            self.navigate_to(self._current_path)
+
+    def _on_deleted(self, payload) -> None:
+        self._status.setText(payload.detail)
+        if payload.ok:
+            self.navigate_to(self._current_path)
 
     def _selected_entry(self) -> FileEntry | None:
         rows = self._table.selectionModel().selectedRows()

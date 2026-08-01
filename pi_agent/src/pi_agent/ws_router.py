@@ -29,6 +29,7 @@ from pi_agent.handlers import (
     processes,
     services,
     stats,
+    terminal,
 )
 from pi_agent.wire import Connection
 
@@ -42,6 +43,8 @@ HANDLERS: dict[MessageType, Handler] = {
     MessageType.PROCESS_LIST: processes.handle,
     MessageType.PROCESS_KILL: processes.handle_kill,
     MessageType.FILES_LIST: files.handle_list,
+    MessageType.FILES_CREATE: files.handle_create,
+    MessageType.FILES_DELETE: files.handle_delete,
     MessageType.CHAT_SEND: clipboard.handle_send,
     MessageType.CLIPBOARD_PULL: clipboard.handle_pull,
     MessageType.SERVICE_LIST: services.handle_list,
@@ -55,6 +58,10 @@ HANDLERS: dict[MessageType, Handler] = {
     MessageType.DOCKER_ACTION: docker.handle_action,
     MessageType.DOCKER_LOGS: docker.handle_logs,
     MessageType.NETWORK_INFO: network.handle,
+    MessageType.TERMINAL_OPEN: terminal.handle_open,
+    MessageType.TERMINAL_INPUT: terminal.handle_input,
+    MessageType.TERMINAL_RESIZE: terminal.handle_resize,
+    MessageType.TERMINAL_CLOSE: terminal.handle_close,
 }
 
 
@@ -71,6 +78,8 @@ async def current_capabilities() -> Capabilities:
         gpio_detail=gpio.describe(),
         docker=docker_ok,
         docker_detail=docker_detail,
+        terminal=terminal.is_available(),
+        terminal_detail=terminal.describe(),
     )
 
 
@@ -143,6 +152,9 @@ async def ws_endpoint(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         logger.info("client disconnected: %s", conn.client_ip)
     finally:
+        # The shell dies with the socket that opened it: a session left running
+        # would keep the user's programs alive with nobody watching them.
+        await terminal.close_for(conn)
         for task in background:
             task.cancel()
 

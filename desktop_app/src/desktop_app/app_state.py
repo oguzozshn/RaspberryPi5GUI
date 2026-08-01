@@ -18,6 +18,10 @@ from pi_protocol import (
     DockerLogsResultPayload,
     Envelope,
     ErrorPayload,
+    FilesCreatePayload,
+    FilesCreateResultPayload,
+    FilesDeletePayload,
+    FilesDeleteResultPayload,
     FilesListPayload,
     FilesListResultPayload,
     GpioListPayload,
@@ -42,6 +46,11 @@ from pi_protocol import (
     ServiceLogsPayload,
     ServiceLogsResultPayload,
     StatsUpdatePayload,
+    TerminalClosePayload,
+    TerminalExitPayload,
+    TerminalInputPayload,
+    TerminalOpenPayload,
+    TerminalOutputPayload,
 )
 
 from desktop_app.connection.ws_client import AuthResult, WsClient
@@ -66,6 +75,10 @@ _ROUTES: list[tuple[MessageType, type[BaseModel], str, str | None]] = [
     (MessageType.DOCKER_ACTION_RESULT, DockerActionResultPayload, "container_action_done", None),
     (MessageType.DOCKER_LOGS_RESULT, DockerLogsResultPayload, "container_logs_received", None),
     (MessageType.NETWORK_INFO_RESULT, NetworkInfoResultPayload, "network_info_received", "latest_network"),
+    (MessageType.FILES_CREATE_RESULT, FilesCreateResultPayload, "file_created", None),
+    (MessageType.FILES_DELETE_RESULT, FilesDeleteResultPayload, "file_deleted", None),
+    (MessageType.TERMINAL_OUTPUT, TerminalOutputPayload, "terminal_output", None),
+    (MessageType.TERMINAL_EXIT, TerminalExitPayload, "terminal_exited", None),
 ]
 
 
@@ -78,6 +91,10 @@ class AppState(QObject):
     processes_updated = Signal(ProcessListResultPayload)
     process_killed = Signal(ProcessKillResultPayload)
     files_listed = Signal(FilesListResultPayload)
+    file_created = Signal(FilesCreateResultPayload)
+    file_deleted = Signal(FilesDeleteResultPayload)
+    terminal_output = Signal(TerminalOutputPayload)
+    terminal_exited = Signal(TerminalExitPayload)
     chat_message_received = Signal(ChatMessagePayload)
     services_listed = Signal(ServiceListResultPayload)
     service_action_done = Signal(ServiceActionResultPayload)
@@ -162,6 +179,27 @@ class AppState(QObject):
 
     async def request_files(self, path: str) -> None:
         await self._ws_client.send(MessageType.FILES_LIST, FilesListPayload(path=path))
+
+    async def create_file(self, path: str, is_dir: bool) -> None:
+        await self._ws_client.send(
+            MessageType.FILES_CREATE, FilesCreatePayload(path=path, is_dir=is_dir)
+        )
+
+    async def delete_file(self, path: str, recursive: bool = False) -> None:
+        await self._ws_client.send(
+            MessageType.FILES_DELETE, FilesDeletePayload(path=path, recursive=recursive)
+        )
+
+    async def open_terminal(self, cols: int, rows: int) -> None:
+        await self._ws_client.send(
+            MessageType.TERMINAL_OPEN, TerminalOpenPayload(cols=cols, rows=rows)
+        )
+
+    async def send_terminal_input(self, data: str) -> None:
+        await self._ws_client.send(MessageType.TERMINAL_INPUT, TerminalInputPayload(data=data))
+
+    async def close_terminal(self) -> None:
+        await self._ws_client.send(MessageType.TERMINAL_CLOSE, TerminalClosePayload())
 
     async def send_chat(self, text: str) -> None:
         await self._ws_client.send(MessageType.CHAT_SEND, ChatSendPayload(text=text))

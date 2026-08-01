@@ -22,6 +22,8 @@ class Capabilities(BaseModel):
     docker_detail: str = ""
     gpio: bool = False
     gpio_detail: str = ""
+    terminal: bool = False
+    terminal_detail: str = ""
 
 
 class AuthOkPayload(BaseModel):
@@ -128,6 +130,33 @@ class FilesListResultPayload(BaseModel):
     path: str
     parent: str | None
     entries: list[FileEntry]
+
+
+class FilesCreatePayload(BaseModel):
+    """Create an empty file or a directory. `path` is the full target path."""
+
+    path: str
+    is_dir: bool = False
+
+
+class FilesCreateResultPayload(BaseModel):
+    path: str
+    is_dir: bool
+    ok: bool
+    detail: str
+
+
+class FilesDeletePayload(BaseModel):
+    path: str
+    # Deleting a directory that still has contents needs saying so explicitly;
+    # nobody empties a home directory by mis-clicking one row.
+    recursive: bool = False
+
+
+class FilesDeleteResultPayload(BaseModel):
+    path: str
+    ok: bool
+    detail: str
 
 
 # --- chat / clipboard bridge ------------------------------------------------
@@ -312,6 +341,43 @@ class NetworkInterface(BaseModel):
 
 class NetworkInfoPayload(BaseModel):
     """No fields: the agent always reports every interface at once."""
+
+
+# --- terminal ---------------------------------------------------------------
+
+
+class TerminalOpenPayload(BaseModel):
+    """Start a shell on a pseudo-terminal. One session per connection."""
+
+    cols: int = 80
+    rows: int = 24
+
+
+class TerminalInputPayload(BaseModel):
+    data: str
+
+
+class TerminalResizePayload(BaseModel):
+    cols: int
+    rows: int
+
+
+class TerminalClosePayload(BaseModel):
+    """Kill the session without dropping the whole connection."""
+
+
+class TerminalOutputPayload(BaseModel):
+    """Raw shell output, escape sequences included - the client emulates."""
+
+    data: str
+
+
+class TerminalExitPayload(BaseModel):
+    exit_code: int | None = None
+    detail: str = ""
+
+
+# --- network ----------------------------------------------------------------
 
 
 class NetworkInfoResultPayload(BaseModel):

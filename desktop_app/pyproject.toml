@@ -14,6 +14,9 @@ dependencies = [
     "websockets>=12.0",
     "aiohttp>=3.9",
     "keyring>=24.0",
+    # Terminal sekmesi icin ANSI/VT yorumlayicisi: kabugun imlec hareketi,
+    # ekran temizleme ve alternatif ekran dizilerini metne cevirir.
+    "pyte>=0.8",
 ]
 
 [project.optional-dependencies]

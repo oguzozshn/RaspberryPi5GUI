@@ -21,8 +21,11 @@ from desktop_app.ui.pages.files_page import FilesPage
 from desktop_app.ui.pages.network_page import NetworkPage
 from desktop_app.ui.pages.power_page import PowerPage
 from desktop_app.ui.pages.services_page import ServicesPage
+from desktop_app.ui.pages.terminal_page import TerminalPage
 
-_SIDEBAR = ["Dashboard", "Sohbet", "Dosyalar", "Servisler", "Guc & GPIO", "Docker", "Ag"]
+_SIDEBAR = [
+    "Dashboard", "Terminal", "Sohbet", "Dosyalar", "Servisler", "Guc & GPIO", "Docker", "Ag",
+]
 
 
 class MainWindow(QMainWindow):
@@ -55,8 +58,10 @@ class MainWindow(QMainWindow):
         self._power = PowerPage(app_state)
         self._docker = DockerPage(app_state)
         self._network = NetworkPage(app_state)
+        self._terminal = TerminalPage(app_state)
         self._pages = [
             self._dashboard,
+            self._terminal,
             self._chat,
             self._files,
             self._services,

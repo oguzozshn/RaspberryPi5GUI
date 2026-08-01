@@ -1,6 +1,6 @@
 from enum import Enum
 
-PROTOCOL_VERSION = 5
+PROTOCOL_VERSION = 6
 
 
 class MessageType(str, Enum):
@@ -20,6 +20,10 @@ class MessageType(str, Enum):
 
     FILES_LIST = "files.list"
     FILES_LIST_RESULT = "files.list.result"
+    FILES_CREATE = "files.create"
+    FILES_CREATE_RESULT = "files.create.result"
+    FILES_DELETE = "files.delete"
+    FILES_DELETE_RESULT = "files.delete.result"
 
     CHAT_SEND = "chat.send"
     CHAT_MESSAGE = "chat.message"
@@ -51,3 +55,10 @@ class MessageType(str, Enum):
 
     NETWORK_INFO = "network.info"
     NETWORK_INFO_RESULT = "network.info.result"
+
+    TERMINAL_OPEN = "terminal.open"
+    TERMINAL_INPUT = "terminal.input"
+    TERMINAL_RESIZE = "terminal.resize"
+    TERMINAL_CLOSE = "terminal.close"
+    TERMINAL_OUTPUT = "terminal.output"
+    TERMINAL_EXIT = "terminal.exit"
