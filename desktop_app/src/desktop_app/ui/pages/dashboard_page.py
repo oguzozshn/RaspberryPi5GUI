@@ -119,7 +119,9 @@ class DashboardPage(QWidget):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
-        if answer is not QMessageBox.StandardButton.Yes:
+        # Deger karsilastirmasi, kimlik degil: QMessageBox.question() bu PySide6
+        # surumunde enum uyesi degil duz int donduruyor (Yes = 16384).
+        if answer != QMessageBox.StandardButton.Yes:
             return
 
         self._process_status.setText(f"PID {pid} sonlandiriliyor...")

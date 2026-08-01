@@ -191,7 +191,10 @@ class PowerPage(QWidget):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
-        if answer is not QMessageBox.StandardButton.Yes:
+        # Deger karsilastirmasi, kimlik degil: QMessageBox.question() bu PySide6
+        # surumunde enum uyesi degil duz int donduruyor (Yes = 16384), yani
+        # `is not` her zaman dogru cikip onayi iptale ceviriyordu.
+        if answer != QMessageBox.StandardButton.Yes:
             return
         self._request_power(action)
 
@@ -286,7 +289,10 @@ class PowerPage(QWidget):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
-        if answer is not QMessageBox.StandardButton.Yes:
+        # Deger karsilastirmasi, kimlik degil: QMessageBox.question() bu PySide6
+        # surumunde enum uyesi degil duz int donduruyor (Yes = 16384), yani
+        # `is not` her zaman dogru cikip onayi iptale ceviriyordu.
+        if answer != QMessageBox.StandardButton.Yes:
             return
         self._write(pin.bcm, value)
 
@@ -303,7 +309,10 @@ class PowerPage(QWidget):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
-        if answer is not QMessageBox.StandardButton.Yes:
+        # Deger karsilastirmasi, kimlik degil: QMessageBox.question() bu PySide6
+        # surumunde enum uyesi degil duz int donduruyor (Yes = 16384), yani
+        # `is not` her zaman dogru cikip onayi iptale ceviriyordu.
+        if answer != QMessageBox.StandardButton.Yes:
             return
         self._release(pin.bcm)
 
