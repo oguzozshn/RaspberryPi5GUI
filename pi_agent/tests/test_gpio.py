@@ -71,6 +71,9 @@ class FakeLgpio:
     def gpio_claim_input(self, handle: int, gpio: int, flags: int = 0) -> None:
         self._guard(gpio)
         self.claims[gpio] = "input"
+        # Claiming as an input is what actually resets the pad direction - the
+        # whole reason gpio.release exists.
+        self.foreign_output.discard(gpio)
 
     def gpio_claim_output(self, handle: int, gpio: int, level: int = 0, flags: int = 0) -> None:
         self._guard(gpio)
@@ -221,6 +224,53 @@ def test_write_reports_a_busy_line_instead_of_raising(fake: FakeLgpio) -> None:
     ok, detail = gpio.write(18, 1)
     assert not ok
     assert "baska bir surec" in detail
+
+
+# --- releasing ---------------------------------------------------------------
+
+
+def test_release_drops_our_claim_and_returns_the_pin_to_input(fake: FakeLgpio) -> None:
+    gpio.write(17, 1)
+    assert fake.claims.get(17) == "output"
+
+    ok, detail = gpio.release(17)
+    assert ok, detail
+    assert 17 not in fake.claims, "hat serbest birakilmali"
+    assert 17 not in gpio._claimed
+
+    by_bcm = {pin.bcm: pin for pin in gpio.read_all()}
+    assert by_bcm[17].mode == "input"
+
+
+def test_release_resets_a_pin_left_driving_by_someone_else(fake: FakeLgpio) -> None:
+    """The case the button exists for: a pin an earlier process drove and left
+    as an output. Only claiming it as an input resets the pad."""
+    fake.foreign_output = {23}
+
+    ok, detail = gpio.release(23)
+    assert ok, detail
+    assert 23 not in fake.foreign_output, "pad girise donmeli"
+    assert 23 not in fake.claims, "islem sonunda hat tutulmamali"
+
+
+def test_release_refuses_the_hat_eeprom_pins(fake: FakeLgpio) -> None:
+    for bcm in (0, 1):
+        ok, detail = gpio.release(bcm)
+        assert not ok
+        assert "EEPROM" in detail
+
+
+def test_release_reports_a_busy_line(fake: FakeLgpio) -> None:
+    fake.foreign[18] = "pwm"
+    ok, detail = gpio.release(18)
+    assert not ok
+    assert "baska bir surec" in detail
+
+
+def test_release_rejects_pins_outside_the_header(fake: FakeLgpio) -> None:
+    ok, detail = gpio.release(99)
+    assert not ok
+    assert "baslikta" in detail
 
 
 def test_write_rejects_levels_other_than_0_and_1(fake: FakeLgpio) -> None:

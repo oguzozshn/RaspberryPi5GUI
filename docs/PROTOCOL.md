@@ -73,6 +73,8 @@ Tüm mesajlar tek bir JSON zarfı içinde gönderilir (`pi_protocol.envelope.Env
 | `gpio.list.result` | sunucu → istemci | `{"pins": [...], "detail": str}` | Fiziksel pin numarasına göre sıralı; `detail` kullanılan gpiochip. |
 | `gpio.write` | istemci → sunucu | `{"bcm": int, "value": 0\|1}` | Pini çıkışa alıp sürer. |
 | `gpio.write.result` | sunucu → istemci | `{"bcm", "value", "ok": bool, "detail": str}` | |
+| `gpio.release` | istemci → sunucu | `{"bcm": int}` | Pini sürmeyi bırakır ve girişe döndürür. |
+| `gpio.release.result` | sunucu → istemci | `{"bcm", "ok": bool, "detail": str}` | |
 | `docker.list` | istemci → sunucu | `{"include_stopped": bool}` | |
 | `docker.list.result` | sunucu → istemci | `{"containers": [...]}` | Çalışanlar önce, sonra alfabetik. |
 | `docker.action` | istemci → sunucu | `{"container": str, "action": "start"\|"stop"\|"restart"}` | |
@@ -170,7 +172,13 @@ Erişim `lgpio` üzerindendir: Pi 5'te RP1'i kernel'in gpiochip karakter aygıt�
   pin sonraki listelemede seviyesini korumalı.
 - **Ajanın durması pini enerjisiz bırakmaz.** Kernel satırı serbest bırakır ama
   pad yönünü ve seviyesini korur; `pi-agent`'i yeniden başlatmak sürülen bir
-  pini geri çevirmez. Girişe döndürmek için Pi'de `pinctrl set <BCM> ip`.
+  pini geri çevirmez.
+- **`gpio.release` pini geri verir**: satırı *girişe* talep edip hemen serbest
+  bırakır. Pad'i sıfırlayan şey bu talep — sadece `gpio_free` çağırmak pini
+  sürer hâlde bırakırdı. Okuma yolunun eskiden her pin için kazara yaptığı işlem
+  budur; artık yalnızca kullanıcı açıkça istediğinde yapılıyor. Başka bir
+  sürecin tuttuğu satırda başarısız olur (`ok: false`), sahibi olmayan ama
+  çıkışa ayarlı satırlarda çalışır — düğmenin asıl varlık sebebi de o.
 - **BCM 0 ve 1'e yazma engellidir** (HAT ID EEPROM). Bu satırları sürmek açılışta
   HAT algılamayı bozabilir ve normal bir kabloya gerek duymaz; `writable: false`
   ile bildirilir, arayüz de düğmeleri kapatır.
@@ -241,3 +249,4 @@ böylece bellek kullanımı dosya boyutundan bağımsız sabit kalır.
 | 2 | chat/clipboard köprüsü, systemd servisleri, capabilities |
 | 3 | `power.action`, `gpio.list`/`gpio.write` |
 | 4 | `docker.*`, `network.info` |
+| 5 | `gpio.release` |

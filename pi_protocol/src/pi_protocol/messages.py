@@ -242,6 +242,18 @@ class GpioWriteResultPayload(BaseModel):
     detail: str
 
 
+class GpioReleasePayload(BaseModel):
+    """Hand a pin back: stop driving it and return it to input."""
+
+    bcm: int
+
+
+class GpioReleaseResultPayload(BaseModel):
+    bcm: int
+    ok: bool
+    detail: str
+
+
 # --- docker -----------------------------------------------------------------
 
 

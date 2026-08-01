@@ -50,6 +50,7 @@ HANDLERS: dict[MessageType, Handler] = {
     MessageType.POWER_ACTION: power.handle,
     MessageType.GPIO_LIST: gpio.handle_list,
     MessageType.GPIO_WRITE: gpio.handle_write,
+    MessageType.GPIO_RELEASE: gpio.handle_release,
     MessageType.DOCKER_LIST: docker.handle_list,
     MessageType.DOCKER_ACTION: docker.handle_action,
     MessageType.DOCKER_LOGS: docker.handle_logs,

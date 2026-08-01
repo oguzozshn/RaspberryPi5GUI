@@ -142,7 +142,7 @@ def test_physical_interfaces_sort_above_container_bridges(monkeypatch: pytest.Mo
             "br-dc1c73c834e1": [addr("172.18.0.1")],
             "lo": [addr("127.0.0.1")],
             "veth305278d": [addr("169.254.1.1")],
-            "wlan0": [addr("192.168.1.115")],
+            "wlan0": [addr("192.168.0.42")],
             "docker0": [addr("172.17.0.1")],
         },
     )

@@ -26,7 +26,8 @@ Mesaj sözleşmesi ve transport kararları için bkz. `docs/PROTOCOL.md`.
 - **Servisler** — systemd birimlerini listeleme/filtreleme, başlat/durdur/yeniden
   başlat, `journalctl` log görüntüleyici.
 - **Güç & GPIO** — onay isteyen yeniden başlatma/kapatma; 40-pin başlığın canlı
-  görünümü (mod, seviye, satırı tutan sürücü) ve seçili pini HIGH/LOW sürme.
+  görünümü (mod, seviye, satırı tutan sürücü), seçili pini HIGH/LOW sürme ve
+  "Girişe al" ile geri verme.
 - **Docker** — container listesi (durum/imaj/portlar), başlat/durdur/yeniden
   başlat, `docker logs` görüntüleyici, ad ve imaja göre filtreleme.
 - **Ağ** — arayüzler, IP/MAC adresleri, trafik sayaçları, varsayılan ağ geçidi,
@@ -113,12 +114,11 @@ $env:PI_AGENT_CONFIG = "pi_agent\dev_config.toml"
 - **Kapatılan Pi uzaktan açılamaz.** Arayüz onay kutusunda uyarır; geri getirmek
   için fiziksel olarak gücü kesip vermek gerekir.
 - **GPIO yalnızca dijital giriş/çıkış.** PWM, I2C/SPI üzerinden cihaz konuşması,
-  kenar tetiklemeli olay dinleme yok. Pin yönü sadece "yaz → çıkış olur" yönünde
-  değişir; arayüzde pini tekrar girişe alma düğmesi yok.
+  kenar tetiklemeli olay dinleme yok.
 - **Sürülen bir pin, agent dursa da sürmeye devam eder.** Kernel satırı serbest
   bırakır ama Pi 5'in pad'i yönü ve seviyeyi korur — `systemctl restart
-  pi-agent` pini geri çevirmez. Girişe döndürmek için Pi'de:
-  `pinctrl set <BCM> ip`.
+  pi-agent` pini geri çevirmez. Arayüzdeki **"Girişe al"** düğmesi bunu yapar
+  (Pi'de elle yapmak isterseniz: `pinctrl set <BCM> ip`).
 - **Sahibi olmayan ama çıkışa ayarlı pinlerin seviyesi "—" gösterilir.** Onları
   okumak sürüşlerini düşüreceği için ajan bilerek dokunmuyor.
 - **GPIO seviyeleri anlık okunur**, canlı akış değil — "Yenile" ile tazelenir.

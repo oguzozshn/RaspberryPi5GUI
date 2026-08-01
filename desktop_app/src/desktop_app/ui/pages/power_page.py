@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 from pi_protocol import (
     GpioListResultPayload,
     GpioPin,
+    GpioReleaseResultPayload,
     GpioWriteResultPayload,
     PowerActionResultPayload,
 )
@@ -62,6 +63,7 @@ class PowerPage(QWidget):
         app_state.power_action_done.connect(self._on_power_result)
         app_state.gpio_listed.connect(self._on_gpio)
         app_state.gpio_write_done.connect(self._on_gpio_write)
+        app_state.gpio_release_done.connect(self._on_gpio_release)
 
         if app_state.latest_gpio is not None:
             self._on_gpio(app_state.latest_gpio)
@@ -100,13 +102,20 @@ class PowerPage(QWidget):
         self._refresh_button.clicked.connect(self.refresh)
         self._high_button = QPushButton("1 (HIGH) yap")
         self._low_button = QPushButton("0 (LOW) yap")
+        self._release_button = QPushButton("Girise al")
+        self._release_button.setToolTip(
+            "Pini surmeyi birakir ve girise dondurur. Ajani durdurmak bunu yapmaz:\n"
+            "surulen bir pin, hat serbest birakilsa da surmeye devam eder."
+        )
         self._high_button.clicked.connect(lambda: self._confirm_write(1))
         self._low_button.clicked.connect(lambda: self._confirm_write(0))
+        self._release_button.clicked.connect(self._confirm_release)
 
         toolbar = QHBoxLayout()
         toolbar.addWidget(self._refresh_button)
         toolbar.addWidget(self._high_button)
         toolbar.addWidget(self._low_button)
+        toolbar.addWidget(self._release_button)
         toolbar.addStretch(1)
 
         self._table = QTableWidget(0, len(_GPIO_COLUMNS))
@@ -126,7 +135,7 @@ class PowerPage(QWidget):
         inner.addWidget(self._table, stretch=1)
         inner.addWidget(self._gpio_status)
 
-        for button in (self._high_button, self._low_button):
+        for button in (self._high_button, self._low_button, self._release_button):
             button.setEnabled(False)
         return group
 
@@ -245,6 +254,9 @@ class PowerPage(QWidget):
         enabled = pin is not None and pin.writable
         self._high_button.setEnabled(enabled)
         self._low_button.setEnabled(enabled)
+        # Only offer "hand it back" for pins that are actually outputs - on an
+        # input pin the button would do nothing visible.
+        self._release_button.setEnabled(enabled and pin.mode == "output")
 
     def _confirm_write(self, value: int) -> None:
         pin = self._selected_pin()
@@ -268,6 +280,37 @@ class PowerPage(QWidget):
         if answer is not QMessageBox.StandardButton.Yes:
             return
         self._write(pin.bcm, value)
+
+    def _confirm_release(self) -> None:
+        pin = self._selected_pin()
+        if pin is None or not pin.writable:
+            return
+
+        answer = QMessageBox.question(
+            self,
+            "Girise al",
+            f"GPIO{pin.bcm} (fiziksel pin {pin.physical}) surulmeyi birakip girise "
+            "alinsin mi?\n\nPine bagli olan sey (role, LED, surucu...) enerjisiz kalir.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer is not QMessageBox.StandardButton.Yes:
+            return
+        self._release(pin.bcm)
+
+    def _release(self, bcm: int) -> None:
+        self._set_gpio_status(f"GPIO{bcm} girise aliniyor...")
+        schedule(
+            self._app_state.release_gpio(bcm),
+            lambda exc: self._set_gpio_status(str(exc), warn=True),
+        )
+
+    def _on_gpio_release(self, payload: GpioReleaseResultPayload) -> None:
+        if payload.ok:
+            self._set_gpio_status(payload.detail)
+            self.refresh()
+        else:
+            self._set_gpio_status(f"GPIO{payload.bcm} birakilamadi: {payload.detail}", warn=True)
 
     def _write(self, bcm: int, value: int) -> None:
         self._set_gpio_status(f"GPIO{bcm} <- {value}...")

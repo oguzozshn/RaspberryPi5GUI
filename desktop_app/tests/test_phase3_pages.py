@@ -4,6 +4,7 @@ from pi_protocol import (
     Envelope,
     GpioListResultPayload,
     GpioPin,
+    GpioReleaseResultPayload,
     GpioWriteResultPayload,
     MessageType,
     PowerActionResultPayload,
@@ -72,6 +73,41 @@ def test_gpio_section_explains_a_pi_without_lgpio(bare_app_state: AppState) -> N
     assert "GPIO kullanilamiyor" in page._gpio_banner.text()
     assert "lgpio" in page._gpio_banner.text()
     assert not page._refresh_button.isEnabled()
+
+
+def test_release_button_is_offered_only_for_output_pins(app_state: AppState) -> None:
+    """On an input pin the button would do nothing visible, so it stays off."""
+    page = PowerPage(app_state)
+    page._on_gpio(_gpio_payload())
+
+    page._table.selectRow(0)  # GPIO2, input
+    assert not page._release_button.isEnabled()
+
+    page._table.selectRow(1)  # GPIO17, output
+    assert page._release_button.isEnabled()
+
+    page._table.selectRow(3)  # GPIO0, yazilamaz
+    assert not page._release_button.isEnabled()
+
+
+def test_release_success_triggers_a_refresh(app_state: AppState) -> None:
+    """Basarida tabloyu tazeler - pinin artik giris gorunmesi gerekiyor, o yuzden
+    durum metni de getirme mesajina doner."""
+    page = PowerPage(app_state)
+    page._on_gpio_release(
+        GpioReleaseResultPayload(bcm=17, ok=True, detail="BCM 17 girise alindi, artik surulmuyor")
+    )
+    assert "Pinler okunuyor" in page._gpio_status.text()
+    assert "e67e22" not in page._gpio_status.styleSheet()
+
+
+def test_release_failure_is_surfaced(app_state: AppState) -> None:
+    page = PowerPage(app_state)
+    page._on_gpio_release(
+        GpioReleaseResultPayload(bcm=18, ok=False, detail="baska bir surec kullaniyor")
+    )
+    assert "birakilamadi" in page._gpio_status.text()
+    assert "e67e22" in page._gpio_status.styleSheet()
 
 
 def test_gpio_write_failure_is_surfaced(app_state: AppState) -> None:

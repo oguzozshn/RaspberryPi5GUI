@@ -22,6 +22,8 @@ from pi_protocol import (
     FilesListResultPayload,
     GpioListPayload,
     GpioListResultPayload,
+    GpioReleasePayload,
+    GpioReleaseResultPayload,
     GpioWritePayload,
     GpioWriteResultPayload,
     MessageType,
@@ -59,6 +61,7 @@ _ROUTES: list[tuple[MessageType, type[BaseModel], str, str | None]] = [
     (MessageType.POWER_ACTION_RESULT, PowerActionResultPayload, "power_action_done", None),
     (MessageType.GPIO_LIST_RESULT, GpioListResultPayload, "gpio_listed", "latest_gpio"),
     (MessageType.GPIO_WRITE_RESULT, GpioWriteResultPayload, "gpio_write_done", None),
+    (MessageType.GPIO_RELEASE_RESULT, GpioReleaseResultPayload, "gpio_release_done", None),
     (MessageType.DOCKER_LIST_RESULT, DockerListResultPayload, "containers_listed", None),
     (MessageType.DOCKER_ACTION_RESULT, DockerActionResultPayload, "container_action_done", None),
     (MessageType.DOCKER_LOGS_RESULT, DockerLogsResultPayload, "container_logs_received", None),
@@ -82,6 +85,7 @@ class AppState(QObject):
     power_action_done = Signal(PowerActionResultPayload)
     gpio_listed = Signal(GpioListResultPayload)
     gpio_write_done = Signal(GpioWriteResultPayload)
+    gpio_release_done = Signal(GpioReleaseResultPayload)
     containers_listed = Signal(DockerListResultPayload)
     container_action_done = Signal(DockerActionResultPayload)
     container_logs_received = Signal(DockerLogsResultPayload)
@@ -180,6 +184,9 @@ class AppState(QObject):
 
     async def write_gpio(self, bcm: int, value: int) -> None:
         await self._ws_client.send(MessageType.GPIO_WRITE, GpioWritePayload(bcm=bcm, value=value))
+
+    async def release_gpio(self, bcm: int) -> None:
+        await self._ws_client.send(MessageType.GPIO_RELEASE, GpioReleasePayload(bcm=bcm))
 
     async def request_containers(self, include_stopped: bool = True) -> None:
         await self._ws_client.send(

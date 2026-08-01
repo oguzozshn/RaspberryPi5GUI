@@ -11,6 +11,8 @@ from pi_protocol import (
     Envelope,
     GpioListResultPayload,
     GpioPin,
+    GpioReleasePayload,
+    GpioReleaseResultPayload,
     GpioWritePayload,
     GpioWriteResultPayload,
     MessageType,
@@ -302,6 +304,44 @@ def write(bcm: int, value: int) -> tuple[bool, str]:
         return True, f"BCM {bcm} <- {value}"
 
 
+def release(bcm: int) -> tuple[bool, str]:
+    """Stop driving a pin and hand it back as an input.
+
+    Claiming a line as an input is what actually resets the RP1 pad - merely
+    freeing it leaves the pin driving, which is why stopping the agent does not
+    switch anything off. The read path used to do this claim implicitly for
+    every pin and disturbed outputs nobody asked it to touch; here it is the
+    explicit point of the request.
+    """
+    if bcm not in HEADER:
+        return False, f"BCM {bcm} 40-pin baslikta bir GPIO degil"
+    if bcm in WRITE_BLOCKED:
+        return False, f"BCM {bcm}: {WRITE_BLOCKED[bcm]}, dokunulmuyor"
+
+    with _lock:
+        lgpio = _load_module()
+        chip = _open_chip()
+        if lgpio is None or chip is None:
+            return False, _describe()
+
+        if bcm in _claimed:
+            try:
+                lgpio.gpio_free(chip.handle, bcm)
+            except Exception:  # noqa: BLE001 - re-claiming below is what matters
+                pass
+            _claimed.pop(bcm, None)
+
+        try:
+            lgpio.gpio_claim_input(chip.handle, bcm)
+        except Exception as exc:  # noqa: BLE001 - held by another process
+            return False, f"pin girise alinamadi (baska bir surec kullaniyor olabilir): {exc}"
+        try:
+            lgpio.gpio_free(chip.handle, bcm)
+        except Exception:  # noqa: BLE001
+            pass
+        return True, f"BCM {bcm} girise alindi, artik surulmuyor"
+
+
 # --- handlers ---------------------------------------------------------------
 
 
@@ -335,5 +375,26 @@ async def handle_write(conn: Connection, raw: dict, config: AgentConfig) -> None
     await conn.send(
         MessageType.GPIO_WRITE_RESULT,
         GpioWriteResultPayload(bcm=bcm, value=value, ok=ok, detail=detail),
+        envelope.id,
+    )
+
+
+async def handle_release(conn: Connection, raw: dict, config: AgentConfig) -> None:
+    try:
+        envelope = Envelope[GpioReleasePayload].model_validate(raw)
+    except ValidationError as exc:
+        await conn.send_error("bad_request", str(exc), raw.get("id"))
+        return
+
+    bcm = envelope.payload.bcm
+    if not await asyncio.to_thread(is_available):
+        await conn.send_error("not_available", describe(), envelope.id)
+        return
+
+    ok, detail = await asyncio.to_thread(release, bcm)
+    logger.info("gpio release BCM %s: %s", bcm, "ok" if ok else detail)
+    await conn.send(
+        MessageType.GPIO_RELEASE_RESULT,
+        GpioReleaseResultPayload(bcm=bcm, ok=ok, detail=detail),
         envelope.id,
     )
