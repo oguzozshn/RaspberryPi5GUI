@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111417">
+<title>Pi Kontrol</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="login" class="screen">
+  <h1>Pi Kontrol</h1>
+  <p class="muted">Kurulumda verilen pairing token'i girin. Bu cihazda saklanir.</p>
+  <input id="token" type="password" inputmode="text" autocomplete="off"
+         placeholder="pairing token" enterkeyhint="go">
+  <button id="login-button" class="primary">Baglan</button>
+  <p id="login-error" class="error"></p>
+</div>
+
+<div id="app" class="screen hidden">
+  <header>
+    <span id="host">—</span>
+    <span id="status" class="status">baglaniliyor…</span>
+  </header>
+
+  <main>
+    <section id="tab-dashboard" class="tab">
+      <div class="tiles">
+        <div class="tile"><span class="label">CPU</span><strong id="cpu">—</strong><span id="cpu-sub" class="sub"></span></div>
+        <div class="tile"><span class="label">Sicaklik</span><strong id="temp">—</strong><span id="temp-sub" class="sub"></span></div>
+        <div class="tile"><span class="label">Bellek</span><strong id="mem">—</strong><span id="mem-sub" class="sub"></span></div>
+        <div class="tile"><span class="label">Disk</span><strong id="disk">—</strong><span id="disk-sub" class="sub"></span></div>
+      </div>
+      <p id="uptime" class="muted"></p>
+    </section>
+
+    <section id="tab-power" class="tab hidden">
+      <button id="reboot" class="wide">Pi'yi Yeniden Baslat</button>
+      <button id="shutdown" class="wide danger">Pi'yi Kapat (guc kesilir)</button>
+      <p class="muted">Kapatilan Pi uzaktan acilamaz; kart uzerindeki guc dugmesine
+        basmak gerekir.</p>
+      <p id="power-status" class="muted"></p>
+    </section>
+
+    <section id="tab-docker" class="tab hidden">
+      <div class="row">
+        <button id="docker-refresh">Yenile</button>
+        <span id="docker-status" class="muted"></span>
+      </div>
+      <ul id="containers" class="list"></ul>
+    </section>
+  </main>
+
+  <nav>
+    <button data-tab="dashboard" class="active">Durum</button>
+    <button data-tab="power">Guc</button>
+    <button data-tab="docker">Docker</button>
+  </nav>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

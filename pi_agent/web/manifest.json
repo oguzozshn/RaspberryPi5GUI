@@ -1,0 +1,19 @@
+{
+  "name": "Raspberry Pi Kontrol",
+  "short_name": "Pi Kontrol",
+  "description": "Raspberry Pi 5 kontrol paneli",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#111417",
+  "theme_color": "#111417",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

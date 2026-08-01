@@ -1,0 +1,151 @@
+:root {
+  --bg: #111417;
+  --panel: #1a1f24;
+  --line: #262d34;
+  --text: #e8edf2;
+  --muted: #93a1ad;
+  --accent: #27ae60;
+  --warn: #e67e22;
+  --danger: #c0392b;
+  /* Telefon centigi/alt cubugu icin: sabit degerler cihaza gore sasiyor. */
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+.hidden { display: none !important; }
+.muted { color: var(--muted); font-size: 14px; }
+.error { color: var(--danger); min-height: 1.2em; }
+
+/* --- giris ekrani --- */
+
+#login {
+  padding: 32px 20px;
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+#login h1 { margin: 0 0 4px; font-size: 24px; }
+
+input {
+  width: 100%;
+  margin: 16px 0 12px;
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 16px; /* 16px'in altinda iOS alani otomatik buyutuyor */
+}
+
+button {
+  padding: 12px 16px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 15px;
+  /* Parmakla basilacak: 44px, dokunmatik icin yaygin alt sinir. */
+  min-height: 44px;
+  cursor: pointer;
+}
+
+button:disabled { opacity: .45; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #08130c; font-weight: 600; }
+button.danger { color: #ff8b7d; border-color: #5a2b26; }
+button.wide { display: block; width: 100%; margin-bottom: 12px; }
+
+/* --- uygulama iskeleti --- */
+
+#app { display: flex; flex-direction: column; min-height: 100vh; }
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+
+.status { color: var(--muted); }
+.status.ok { color: var(--accent); }
+.status.warn { color: var(--warn); }
+.status.down { color: var(--danger); }
+
+main { flex: 1; padding: 16px; padding-bottom: calc(88px + var(--safe-bottom)); }
+
+nav {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  display: flex;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  padding-bottom: var(--safe-bottom);
+}
+
+nav button {
+  flex: 1;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  min-height: 56px;
+}
+
+nav button.active { color: var(--text); box-shadow: inset 0 2px 0 var(--accent); }
+
+/* --- dashboard --- */
+
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+.tile {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tile .label { color: var(--muted); font-size: 13px; }
+.tile strong { font-size: 26px; font-weight: 600; }
+.tile .sub { color: var(--muted); font-size: 12px; }
+
+/* --- docker --- */
+
+.row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+
+.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+
+.list li {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.list .name { font-weight: 600; word-break: break-all; }
+.list .meta { color: var(--muted); font-size: 13px; margin: 2px 0 10px; }
+.list .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.list .actions button { flex: 1; min-width: 92px; }
+
+.state-running { color: var(--accent); }
+.state-exited { color: var(--muted); }
+.state-restarting, .state-paused { color: var(--warn); }
+.state-dead { color: var(--danger); }
+
+@media (min-width: 620px) {
+  .tiles { grid-template-columns: repeat(4, 1fr); }
+  main { max-width: 900px; margin: 0 auto; width: 100%; }
+}
