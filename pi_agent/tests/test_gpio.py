@@ -23,6 +23,9 @@ class FakeLgpio:
         self.chips = chips if chips is not None else {0: ("pinctrl-rp1", 54)}
         self.levels: dict[int, int] = {}
         self.foreign: dict[int, str] = {}  # lines held by some other consumer
+        # Lines configured as outputs but claimed by nobody - what a pin looks
+        # like after the process that drove it exited.
+        self.foreign_output: set[int] = set()
         self.claims: dict[int, str] = {}  # lines held by us: "input" / "output"
         self.open_handles: set[int] = set()
         self.closed: list[int] = []
@@ -47,6 +50,8 @@ class FakeLgpio:
     def gpio_get_line_info(self, handle: int, gpio: int) -> list:
         flags = 0
         consumer = ""
+        if gpio in self.foreign_output:
+            flags |= self.LINE_FLAG_OUTPUT
         if gpio in self.foreign:
             flags |= self.LINE_FLAG_KERNEL
             consumer = self.foreign[gpio]
@@ -160,6 +165,21 @@ def test_pins_held_by_another_driver_report_no_value(fake: FakeLgpio) -> None:
     assert by_bcm[10].value is None
     assert by_bcm[10].consumer == "spi0"
     assert by_bcm[4].value == 0, "diger pinler okunmaya devam etmeli"
+
+
+def test_an_unowned_output_pin_is_left_alone(fake: FakeLgpio) -> None:
+    """Found on a real Pi 5: releasing a line does not reset the RP1 pad, so a
+    pin an earlier process drove stays an output holding its level. Sampling it
+    means claiming it as an input, which drops that drive - opening the GPIO tab
+    would silently switch off whatever the pin was holding."""
+    fake.levels[23] = 1
+    fake.foreign_output = {23}
+
+    by_bcm = {pin.bcm: pin for pin in gpio.read_all()}
+    assert by_bcm[23].mode == "output"
+    assert by_bcm[23].value is None, "sahibi olmayan cikis pini okunmamali"
+    assert 23 not in fake.claims, "pin talep edilmemeli"
+    assert fake.levels[23] == 1, "surus bozulmamali"
 
 
 def test_written_pin_keeps_its_claim_and_level_across_a_refresh(fake: FakeLgpio) -> None:

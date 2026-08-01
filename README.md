@@ -113,9 +113,14 @@ $env:PI_AGENT_CONFIG = "pi_agent\dev_config.toml"
 - **Kapatılan Pi uzaktan açılamaz.** Arayüz onay kutusunda uyarır; geri getirmek
   için fiziksel olarak gücü kesip vermek gerekir.
 - **GPIO yalnızca dijital giriş/çıkış.** PWM, I2C/SPI üzerinden cihaz konuşması,
-  kenar tetiklemeli olay dinleme yok. Pin yönü de sadece "yaz → çıkış olur"
-  yönünde değişir; sürülen bir pini tekrar girişe almak için agent'ı yeniden
-  başlatmak gerekir (`sudo systemctl restart pi-agent`).
+  kenar tetiklemeli olay dinleme yok. Pin yönü sadece "yaz → çıkış olur" yönünde
+  değişir; arayüzde pini tekrar girişe alma düğmesi yok.
+- **Sürülen bir pin, agent dursa da sürmeye devam eder.** Kernel satırı serbest
+  bırakır ama Pi 5'in pad'i yönü ve seviyeyi korur — `systemctl restart
+  pi-agent` pini geri çevirmez. Girişe döndürmek için Pi'de:
+  `pinctrl set <BCM> ip`.
+- **Sahibi olmayan ama çıkışa ayarlı pinlerin seviyesi "—" gösterilir.** Onları
+  okumak sürüşlerini düşüreceği için ajan bilerek dokunmuyor.
 - **GPIO seviyeleri anlık okunur**, canlı akış değil — "Yenile" ile tazelenir.
 - **Docker'ı kurmak size ait.** Ajan docker'ı kurmaz; kuruluysa kullanır. Kurulum
   sonrası hesabınızın `docker` grubuna eklenmesi gerekir (`install.sh` grubu

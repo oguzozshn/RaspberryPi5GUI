@@ -156,13 +156,21 @@ Erişim `lgpio` üzerindendir: Pi 5'te RP1'i kernel'in gpiochip karakter aygıt�
 - **Yonga etikete göre bulunur**, numaraya göre değil: başlık bankası Bookworm
   kernel'leri arasında `gpiochip4` → `gpiochip0` diye yer değiştirdi, etiket
   (`pinctrl-rp1`) ise sabit kaldı.
-- **`gpio.list` tahribatsızdır.** Sadece örneklenen pinler girişe alınıp okunur
-  ve *hemen* serbest bırakılır; aksi hâlde ajan Pi'deki diğer programlara
-  başlığın tamamını tutuyormuş gibi görünürdü. Başka bir sürücünün (SPI, I2C,
-  PWM...) tuttuğu satır talep edilmez, `value: null` döner.
+- **`gpio.list` tahribatsızdır.** Sadece *girişe ayarlı ve boşta* olan pinler
+  geçici olarak talep edilip okunur ve hemen serbest bırakılır. Talep edilmeyen
+  iki durum var, ikisi de `value: null` döner:
+  - başka bir sürücünün (SPI, I2C, PWM...) tuttuğu satırlar — talep zaten
+    başarısız olurdu;
+  - **sahibi olmayan ama çıkışa ayarlı satırlar.** Bu ayrımı gerçek donanımda
+    öğrendik: satırı serbest bırakmak RP1 pad'ini sıfırlamıyor, yani bir süreç
+    pini sürüp çıktıktan sonra pin sürmeye devam ediyor. Böyle bir pini
+    örneklemek onu girişe almak demek olurdu ve **sekmeyi açmak, pinin tuttuğu
+    şeyi sessizce düşürürdü**.
 - **`gpio.write` pini çıkış olarak ayırır ve ayırmayı bırakmaz** — sürülen bir
-  pin sonraki listelemede seviyesini korumalı. Ajan süreci bittiğinde kernel
-  satırları otomatik serbest bırakır.
+  pin sonraki listelemede seviyesini korumalı.
+- **Ajanın durması pini enerjisiz bırakmaz.** Kernel satırı serbest bırakır ama
+  pad yönünü ve seviyesini korur; `pi-agent`'i yeniden başlatmak sürülen bir
+  pini geri çevirmez. Girişe döndürmek için Pi'de `pinctrl set <BCM> ip`.
 - **BCM 0 ve 1'e yazma engellidir** (HAT ID EEPROM). Bu satırları sürmek açılışta
   HAT algılamayı bozabilir ve normal bir kabloya gerek duymaz; `writable: false`
   ile bildirilir, arayüz de düğmeleri kapatır.

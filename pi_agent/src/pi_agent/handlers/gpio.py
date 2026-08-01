@@ -200,7 +200,7 @@ def reset() -> None:
 # --- reading / writing ------------------------------------------------------
 
 
-def _read_level(lgpio, chip: _Chip, bcm: int, ours: bool, busy: bool) -> int | None:
+def _read_level(lgpio, chip: _Chip, bcm: int, ours: bool, busy: bool, is_output: bool) -> int | None:
     if ours:
         try:
             return int(lgpio.gpio_read(chip.handle, bcm))
@@ -208,6 +208,14 @@ def _read_level(lgpio, chip: _Chip, bcm: int, ours: bool, busy: bool) -> int | N
             return None
     if busy:
         return None  # another consumer owns the line; claiming it would fail
+    if is_output:
+        # Configured as an output but held by nobody - typically a pin some
+        # earlier process drove and then exited, because the RP1 pad keeps its
+        # direction and level after the line is released. Sampling it would mean
+        # claiming it as an input, which drops that drive: opening this tab would
+        # silently switch off whatever it was holding. Report it as unknown
+        # instead; writing to it is still allowed and takes it over explicitly.
+        return None
 
     try:
         lgpio.gpio_claim_input(chip.handle, bcm)
@@ -238,12 +246,15 @@ def _read_pin(lgpio, chip: _Chip, bcm: int) -> GpioPin:
 
     ours = _claimed.get(bcm)
     busy = bool(flags & _FLAG_KERNEL)
-    mode = "output" if (ours == "output" or flags & _FLAG_OUTPUT) else "input"
+    is_output = bool(flags & _FLAG_OUTPUT)
+    mode = "output" if (ours == "output" or is_output) else "input"
     return GpioPin(
         bcm=bcm,
         physical=physical,
         mode=mode,
-        value=_read_level(lgpio, chip, bcm, ours=ours is not None, busy=busy),
+        value=_read_level(
+            lgpio, chip, bcm, ours=ours is not None, busy=busy, is_output=is_output
+        ),
         consumer=consumer,
         reserved_for=reserved_for,
         writable=bcm not in WRITE_BLOCKED,
