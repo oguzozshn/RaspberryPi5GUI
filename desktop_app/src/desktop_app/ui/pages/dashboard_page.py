@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 
 from pi_protocol import ProcessKillResultPayload, StatsUpdatePayload
 
+from desktop_app import vnc
 from desktop_app.app_state import AppState
 from desktop_app.async_utils import schedule
 from desktop_app.ui.format import bytes_human, duration_human
@@ -35,6 +36,17 @@ class DashboardPage(QWidget):
         self._header = QLabel("—")
         self._header.setStyleSheet(muted(self, size_px=13))
         self._processes_in_flight = False
+
+        self._vnc_button = QPushButton("Masaustunu Ac (VNC)")
+        self._vnc_button.clicked.connect(self._open_desktop)
+        self._vnc_status = QLabel("")
+        self._vnc_status.setStyleSheet(muted(self, size_px=12))
+
+        header_row = QHBoxLayout()
+        header_row.addWidget(self._header)
+        header_row.addStretch(1)
+        header_row.addWidget(self._vnc_status)
+        header_row.addWidget(self._vnc_button)
 
         self._cpu_tile = StatTile("CPU Kullanimi")
         self._temp_tile = StatTile("CPU Sicakligi")
@@ -61,7 +73,7 @@ class DashboardPage(QWidget):
         process_bar.addWidget(self._kill_button)
 
         layout = QVBoxLayout(self)
-        layout.addWidget(self._header)
+        layout.addLayout(header_row)
         layout.addLayout(tiles)
         layout.addLayout(process_bar)
         layout.addWidget(self._process_table, stretch=1)
@@ -84,6 +96,28 @@ class DashboardPage(QWidget):
         no I/O and does not require a running event loop."""
         self._timer.start()
         self._refresh_processes()
+        self._apply_vnc_capability()
+
+    # --- remote desktop -----------------------------------------------------
+
+    def _apply_vnc_capability(self) -> None:
+        capabilities = self._app_state.capabilities
+        self._vnc_button.setEnabled(capabilities.vnc)
+        if capabilities.vnc:
+            self._vnc_status.setText(capabilities.vnc_detail)
+        else:
+            # Sunucu kapaliyken dugmeyi acik birakmak, hicbir zaman baglanamayan
+            # bir istemci penceresi acmak demek olurdu.
+            self._vnc_status.setText(
+                capabilities.vnc_detail or "Pi'de VNC sunucusu calismiyor"
+            )
+
+    def _open_desktop(self) -> None:
+        capabilities = self._app_state.capabilities
+        ok, detail = vnc.launch(self._app_state.host, capabilities.vnc_port)
+        self._vnc_status.setText(detail)
+        if not ok:
+            QMessageBox.information(self, "Masaustunu ac", detail)
 
     def _refresh_processes(self) -> None:
         # Collecting the process list takes a noticeable fraction of a second, so

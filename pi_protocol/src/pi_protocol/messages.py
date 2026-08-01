@@ -24,6 +24,9 @@ class Capabilities(BaseModel):
     gpio_detail: str = ""
     terminal: bool = False
     terminal_detail: str = ""
+    vnc: bool = False
+    vnc_detail: str = ""
+    vnc_port: int = 5900
 
 
 class AuthOkPayload(BaseModel):

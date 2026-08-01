@@ -27,6 +27,7 @@ from pi_agent.handlers import (
     network,
     power,
     processes,
+    remote_desktop,
     services,
     stats,
     terminal,
@@ -70,6 +71,7 @@ async def current_capabilities() -> Capabilities:
     display, logging into the desktop or starting the docker daemon takes effect
     on the next reconnect."""
     docker_ok, docker_detail = await docker.probe()
+    vnc_ok, vnc_detail = await remote_desktop.probe()
     return Capabilities(
         clipboard=clipboard.detect() is not None,
         clipboard_detail=clipboard.describe(),
@@ -80,6 +82,9 @@ async def current_capabilities() -> Capabilities:
         docker_detail=docker_detail,
         terminal=terminal.is_available(),
         terminal_detail=terminal.describe(),
+        vnc=vnc_ok,
+        vnc_detail=vnc_detail,
+        vnc_port=remote_desktop.VNC_PORT,
     )
 
 
