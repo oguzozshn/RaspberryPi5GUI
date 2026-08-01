@@ -17,6 +17,11 @@ _CANDIDATES = (
     Path(r"C:\Program Files (x86)\TightVNC\tvnviewer.exe"),
 )
 
+# Yalnizca komut satirindan adres kabul eden istemciler. RealVNC 8'in
+# rvncconnect.exe'si bilerek disarida: gercek donanimda denendi, "vnc://host",
+# "host::5900" ve "-Address=..." bicimlerinin ucu de yok sayildi (hesap tabanli
+# uygulama kendi ana ekranini aciyor). Onu listeye koymak, hicbir yere
+# baglanmayan bir pencereyi "basariyla acildi" diye raporlamak olurdu.
 _EXE_NAMES = ("vncviewer.exe", "vncviewer64.exe", "tvnviewer.exe")
 
 INSTALL_HINT = (
