@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import pyte
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont, QFontDatabase, QKeyEvent
+from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication, QKeyEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QMenu,
     QPlainTextEdit,
     QPushButton,
     QVBoxLayout,
@@ -40,6 +41,40 @@ _SPECIAL_KEYS: dict[int, str] = {
 }
 
 
+def is_paste(event: QKeyEvent) -> bool:
+    """Ctrl+V, Ctrl+Shift+V ve Shift+Insert.
+
+    Terminal geleneginde yapistirma Ctrl+Shift+V'dir, cunku Ctrl+V kabukta
+    'quoted insert' (0x16) anlamina gelir. Ama bu bir Windows masaustu
+    uygulamasi ve kullanicinin refleksi Ctrl+V; ikisini de kabul ediyoruz.
+    """
+    modifiers = event.modifiers()
+    if modifiers & Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_V.value:
+        return True
+    return bool(
+        modifiers & Qt.KeyboardModifier.ShiftModifier and event.key() == Qt.Key.Key_Insert.value
+    )
+
+
+def is_copy(event: QKeyEvent) -> bool:
+    """Ctrl+Shift+C: Ctrl+C burada kopyalama degil, SIGINT gonderir."""
+    modifiers = event.modifiers()
+    return bool(
+        modifiers & Qt.KeyboardModifier.ControlModifier
+        and modifiers & Qt.KeyboardModifier.ShiftModifier
+        and event.key() == Qt.Key.Key_C.value
+    )
+
+
+def paste_payload(text: str) -> str:
+    """Panodaki metni kabugun bekledigi hale getir.
+
+    Satir sonlari \\r olmali: kabuk \\n'i satir sonu saymaz, cok satirli bir
+    yapistirma tek satira yapisir ya da hic calismaz.
+    """
+    return text.replace("\r\n", "\r").replace("\n", "\r")
+
+
 def key_to_bytes(event: QKeyEvent) -> str:
     """Translate a Qt key event into what a terminal would send.
 
@@ -66,6 +101,8 @@ class TerminalView(QPlainTextEdit):
     def __init__(self, on_key) -> None:
         super().__init__()
         self._on_key = on_key
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._show_menu)
         self.setReadOnly(True)
         self.setUndoRedoEnabled(False)
         self.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
@@ -77,10 +114,33 @@ class TerminalView(QPlainTextEdit):
         self.setFont(font)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802 - Qt override
+        if is_paste(event):
+            self.paste_clipboard()
+            event.accept()
+            return
+        if is_copy(event):
+            self.copy()
+            event.accept()
+            return
+
         data = key_to_bytes(event)
         if data:
             self._on_key(data)
         event.accept()
+
+    def paste_clipboard(self) -> None:
+        text = QGuiApplication.clipboard().text()
+        if text:
+            self._on_key(paste_payload(text))
+
+    def _show_menu(self, position) -> None:
+        """Sag tik menusu: kisayolu bilmeyen icin kesfedilebilir yol."""
+        menu = QMenu(self)
+        copy_action = menu.addAction("Kopyala (Ctrl+Shift+C)")
+        copy_action.setEnabled(self.textCursor().hasSelection())
+        copy_action.triggered.connect(self.copy)
+        menu.addAction("Yapistir (Ctrl+V)").triggered.connect(self.paste_clipboard)
+        menu.exec(self.mapToGlobal(position))
 
 
 class TerminalPage(QWidget):

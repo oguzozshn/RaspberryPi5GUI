@@ -21,6 +21,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
+build = ["pyinstaller>=6.0"]
 
 [project.scripts]
 pi-desktop = "desktop_app.main:run"

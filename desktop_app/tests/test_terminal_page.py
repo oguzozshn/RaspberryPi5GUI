@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import pytest
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QKeyEvent
+from PySide6.QtGui import QGuiApplication, QKeyEvent
 
 from pi_protocol import TerminalExitPayload, TerminalOutputPayload
 
 from desktop_app.app_state import AppState
-from desktop_app.ui.pages.terminal_page import TerminalPage, key_to_bytes
+from desktop_app.ui.pages.terminal_page import (
+    TerminalPage,
+    is_copy,
+    is_paste,
+    key_to_bytes,
+    paste_payload,
+)
 
 
 def _key(key: Qt.Key, text: str = "", ctrl: bool = False) -> QKeyEvent:
@@ -43,6 +49,75 @@ def test_arrows_send_escape_sequences(qapp) -> None:
 
 def test_backspace_sends_del(qapp) -> None:
     assert key_to_bytes(_key(Qt.Key.Key_Backspace)) == "\x7f"
+
+
+# --- yapistirma -------------------------------------------------------------
+
+
+def test_paste_shortcuts_are_recognised(qapp) -> None:
+    """Ctrl+Shift+V terminal gelenegi, Ctrl+V Windows refleksi, Shift+Insert
+    ikisinden de eski; ucu de kabul ediliyor."""
+    ctrl_shift = Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier
+    assert is_paste(_key(Qt.Key.Key_V, "v", ctrl=True))
+    assert is_paste(QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_V.value, ctrl_shift, "V"))
+    assert is_paste(
+        QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Insert.value,
+                  Qt.KeyboardModifier.ShiftModifier, "")
+    )
+
+
+def test_plain_v_is_not_a_paste(qapp) -> None:
+    assert not is_paste(_key(Qt.Key.Key_V, "v"))
+
+
+def test_ctrl_c_is_not_a_copy(qapp) -> None:
+    """Ctrl+C kopyalama degil SIGINT; kopyalama Ctrl+Shift+C."""
+    ctrl_shift = Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier
+    assert not is_copy(_key(Qt.Key.Key_C, "c", ctrl=True))
+    assert is_copy(QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_C.value, ctrl_shift, "C"))
+
+
+def test_paste_converts_newlines_for_the_shell() -> None:
+    """Kabuk satir sonu olarak \\r bekler; \\n ile yapistirilan komut calismaz."""
+    assert paste_payload("ls -la\nwhoami\n") == "ls -la\rwhoami\r"
+    assert paste_payload("ls\r\nps") == "ls\rps"
+
+
+def _spy_input(monkeypatch: pytest.MonkeyPatch, app_state: AppState) -> list[str]:
+    """AppState katmanindan yakala: TerminalView, _send_input'un bagli
+    referansini kurulusta aldigi icin sayfayi yamalamak ise yaramaz."""
+    sent: list[str] = []
+
+    def fake(data: str):
+        sent.append(data)
+
+        async def noop() -> None:
+            return None
+
+        return noop()
+
+    monkeypatch.setattr(app_state, "send_terminal_input", fake)
+    return sent
+
+
+def test_pasting_sends_the_clipboard_to_the_shell(app_state: AppState, monkeypatch: pytest.MonkeyPatch) -> None:
+    page = TerminalPage(app_state)
+    page.open_session()
+    sent = _spy_input(monkeypatch, app_state)
+    QGuiApplication.clipboard().setText("sudo systemctl restart pi-agent\n")
+
+    page._view.paste_clipboard()
+    assert sent == ["sudo systemctl restart pi-agent\r"]
+
+
+def test_pasting_an_empty_clipboard_sends_nothing(app_state: AppState, monkeypatch: pytest.MonkeyPatch) -> None:
+    page = TerminalPage(app_state)
+    page.open_session()
+    sent = _spy_input(monkeypatch, app_state)
+    QGuiApplication.clipboard().setText("")
+
+    page._view.paste_clipboard()
+    assert sent == []
 
 
 # --- screen rendering -------------------------------------------------------

@@ -73,6 +73,23 @@ python -m venv .venv-desktop
 doğrulanır; token Windows Credential Manager'da (`keyring`) saklanır, IP ve port
 `QSettings`'te tutulur.
 
+### Tek dosyalık exe
+
+Python kurulu olmayan bir Windows'ta da çalışsın istiyorsanız:
+
+```powershell
+.venv-desktop\Scripts\pip install pyinstaller
+.venv-desktop\Scripts\python desktop_app\scripts\build_exe.py
+```
+
+Sonuç `dist\PiKontrol.exe` (~54 MB, tek dosya). Simge `pi_agent/web/icon.svg`'den
+Qt ile üretilir, ayrı bir dönüştürücü araç gerekmez. İlk açılış birkaç saniye
+sürer: tek-dosya paketi kendini geçici klasöre açar.
+
+> `keyring` arka uçları eklentiyle bulunduğu için PyInstaller'ın statik analizi
+> onları göremez ve `--hidden-import` ile eklenir; eksik olsalardı uygulama
+> kayıtlı token'ı okuyamaz, her açılışta kurulum ekranı gösterirdi.
+
 Bağlantı koparsa üst çubukta **"Yeniden Baglan"** düğmesi çıkar. Deneme bilerek
 otomatik değil: Pi genelde biri gidip güç düğmesine bastığı için geri gelir ve
 kendi takvimiyle bağlanan bir istemci, ekranı sizin seçmediğiniz bir anda
