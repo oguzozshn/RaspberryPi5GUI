@@ -33,8 +33,10 @@ class MainWindow(QMainWindow):
 
         self._app_state = app_state
         self._status_label = QLabel()
+        self._was_disconnected = False
         self._set_connected(True)
-        app_state.connection_changed.connect(self._set_connected)
+        app_state.connection_changed.connect(self._on_connection_changed)
+        app_state.reconnecting.connect(self._on_reconnecting)
 
         file_client = FileClient(app_state.host, app_state.port, app_state.token)
         self._dashboard = DashboardPage(app_state)
@@ -77,6 +79,25 @@ class MainWindow(QMainWindow):
         """Kick off the pages' initial requests once a running event loop exists."""
         for page in self._pages:
             page.start()
+
+    def _on_connection_changed(self, connected: bool, reason: str = "") -> None:
+        self._set_connected(connected, reason)
+        if not connected:
+            self._was_disconnected = True
+            return
+        if self._was_disconnected:
+            # Back after a drop - typically a reboot this app asked for. Every
+            # page is holding data from before the Pi went away, and the
+            # handshake has just re-read capabilities, so redo the initial
+            # fetches instead of leaving a screen full of stale rows.
+            self._was_disconnected = False
+            self.start()
+
+    def _on_reconnecting(self, attempt: int, delay: float) -> None:
+        self._status_label.setText(
+            f"○ Baglanti kesildi — yeniden deneniyor ({attempt}. deneme, {delay:.0f} sn)"
+        )
+        self._status_label.setStyleSheet("color: #e67e22;")
 
     def _set_connected(self, connected: bool, reason: str = "") -> None:
         if connected:

@@ -73,6 +73,11 @@ python -m venv .venv-desktop
 doğrulanır; token Windows Credential Manager'da (`keyring`) saklanır, IP ve port
 `QSettings`'te tutulur.
 
+Bağlantı koparsa uygulama **kendi kendine yeniden bağlanır** (1, 2, 4, 8, sonra
+15'er saniye aralıklarla, süresiz). Bu şart: yeniden başlatma/kapatma bu
+uygulamanın kendi özelliği, yani kopma beklenen bir durum. Geri döndüğünde
+sekmeler verilerini yeniden çeker, çünkü Pi giderken ekranda kalanlar bayattır.
+
 ## Geliştirme
 
 Pi tarafı Linux'ta, masaüstü Windows'ta çalıştığı için bağımlılıkları ayrı
