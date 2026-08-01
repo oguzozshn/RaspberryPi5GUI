@@ -5,3 +5,15 @@ __pycache__/
 .venv*/
 build/
 dist/
+
+# Ortam dosyalari. Pairing token, IP ve benzeri makineye ozel degerler burada
+# tutulur; commit'lenirlerse Pi'nin anahtari repoya girer.
+.env
+.env.*
+*.env
+!.env.example
+
+# Pi'nin gercek yapilandirmasi (install.sh /etc/pi-agent/config.toml'a yazar);
+# yanlislikla repoya kopyalanirsa token'i sizdirmasin.
+config.local.toml
+*.local.toml
