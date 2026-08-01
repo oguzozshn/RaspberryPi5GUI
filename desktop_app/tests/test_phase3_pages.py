@@ -122,6 +122,16 @@ def test_gpio_write_failure_is_surfaced(app_state: AppState) -> None:
 # --- power ------------------------------------------------------------------
 
 
+def test_power_button_labels_name_their_target(app_state: AppState) -> None:
+    """"Kapat" tek basina "pencereyi kapat" diye okunabilir; sonucu fiziksel
+    erisim gerektiren bir dugme icin ozne acik olmali."""
+    page = PowerPage(app_state)
+    assert "Pi" in page._shutdown_button.text()
+    assert "Pi" in page._reboot_button.text()
+    assert "guc" in page._shutdown_button.text().lower()
+    assert "geri acilamaz" in page._shutdown_button.toolTip()
+
+
 def test_power_buttons_are_disabled_without_systemd(bare_app_state: AppState) -> None:
     page = PowerPage(bare_app_state)
     page.start()

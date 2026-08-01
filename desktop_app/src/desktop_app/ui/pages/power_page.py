@@ -73,8 +73,17 @@ class PowerPage(QWidget):
     def _build_power_group(self) -> QGroupBox:
         group = QGroupBox("Guc")
 
-        self._reboot_button = QPushButton("Yeniden Baslat")
-        self._shutdown_button = QPushButton("Kapat")
+        # "Kapat" tek basina Turkce'de once "pencereyi kapat" diye okunur; sonucu
+        # fiziksel erisim gerektiren bir islem icin fazla belirsiz. Etiketler
+        # ozneyi acikca soyluyor, kapatma dugmesi ayrica kirmizi.
+        self._reboot_button = QPushButton("Pi'yi Yeniden Baslat")
+        self._shutdown_button = QPushButton("Pi'yi Kapat (guc kesilir)")
+        self._shutdown_button.setStyleSheet("color: #c0392b; font-weight: bold;")
+        self._shutdown_button.setToolTip(
+            "Raspberry Pi'yi kapatir. Uzaktan geri acilamaz: kart uzerindeki guc\n"
+            "dugmesine basmaniz ya da kabloyu cikarip takmaniz gerekir."
+        )
+        self._reboot_button.setToolTip("Raspberry Pi'yi yeniden baslatir (~30-60 sn).")
         self._reboot_button.clicked.connect(lambda: self._confirm_power("reboot"))
         self._shutdown_button.clicked.connect(lambda: self._confirm_power("shutdown"))
 
