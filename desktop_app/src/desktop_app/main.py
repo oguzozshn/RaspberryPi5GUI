@@ -33,12 +33,21 @@ async def _bootstrap(app: QApplication, settings: Settings, ws_client: WsClient)
     host, port, token = settings.host, settings.port, settings.token
 
     if host and token:
+        reason = ""
         try:
             result = await ws_client.connect(host, port, token)
-        except Exception:  # noqa: BLE001 - fall back to the setup dialog on any connect failure
-            result = None
+        except Exception as exc:  # noqa: BLE001 - Pi unreachable, or refusing
+            result, reason = None, str(exc)
         if result is AuthResult.OK:
             _show_main_window(ws_client, host, port, token)
+            return
+        if result is None:
+            # Settings are saved and the token was never rejected - the Pi is
+            # just not answering, most likely switched off. Opening the setup
+            # dialog would ask for details the user already gave; show the panel
+            # disconnected instead, with its "Yeniden Baglan" button.
+            window = _show_main_window(ws_client, host, port, token, connected=False)
+            window._on_connection_changed(False, reason or "Pi'ye ulasilamadi")
             return
 
     dialog = SetupDialog(ws_client)
@@ -52,16 +61,22 @@ async def _bootstrap(app: QApplication, settings: Settings, ws_client: WsClient)
         app.quit()
 
 
-def _show_main_window(ws_client: WsClient, host: str, port: int, token: str) -> None:
+def _show_main_window(
+    ws_client: WsClient, host: str, port: int, token: str, connected: bool = True
+) -> MainWindow:
     app_state = AppState(ws_client, host, port, token)
     window = MainWindow(app_state)
     window.show()
-    window.start()
+    if connected:
+        # Without a connection the pages' initial requests would only produce a
+        # screenful of errors; they run once the user reconnects.
+        window.start()
     # Keep references on the QApplication so neither the window nor the state
     # object is garbage collected once _bootstrap returns.
     instance = QApplication.instance()
     instance.main_window = window  # type: ignore[attr-defined]
     instance.app_state = app_state  # type: ignore[attr-defined]
+    return window
 
 
 if __name__ == "__main__":

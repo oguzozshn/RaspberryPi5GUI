@@ -50,6 +50,10 @@ class WsClient(QObject):
         return self._socket is not None
 
     async def connect(self, host: str, port: int, token: str) -> AuthResult:
+        # Remember before attempting, not after: a first connect that fails
+        # because the Pi is switched off must still leave enough behind for the
+        # "Yeniden Baglan" button to have something to try.
+        self._credentials = (host, port, token)
         url = f"ws://{host}:{port}/ws"
         socket = await websockets.connect(url, open_timeout=5, max_size=8 * 1024 * 1024)
 
@@ -73,7 +77,6 @@ class WsClient(QObject):
             self.capabilities = Capabilities()
 
         self._socket = socket
-        self._credentials = (host, port, token)
         self._closing = False
         self._recv_task = asyncio.ensure_future(self._listen())
         self.connected.emit()
