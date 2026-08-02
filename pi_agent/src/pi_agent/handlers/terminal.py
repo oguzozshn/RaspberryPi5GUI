@@ -40,9 +40,15 @@ _MAX_COLS, _MAX_ROWS = 500, 200
 # Cizim modunda kareler bu araliktan sik gonderilmez (saniyede ~20 kare).
 _RENDER_INTERVAL_SECONDS = 0.05
 
-# One session per connection: the desktop shows a single terminal tab, and
-# keeping it 1:1 means a dropped socket can never leave a shell behind.
-_sessions: dict[int, "Session"] = {}
+# Bir baglantinin acabilecegi kabuk sayisi. Sekme acmak ucuz gorunur ama her biri
+# Pi'de gercek bir surec; sinirsiz birakmak tek bir istemcinin makineyi
+# doldurmasina izin vermek olurdu.
+_MAX_SESSIONS = 8
+
+# (baglanti, oturum kimligi) -> Session. Bir baglantida birden fazla kabuk
+# olabilir (istemcideki sekmeler), ama hepsi o sokete bagli: soket dustugunde
+# hicbiri arkada kalmaz.
+_sessions: dict[tuple[int, str], "Session"] = {}
 
 
 def is_available() -> bool:
@@ -79,8 +85,9 @@ def _clamp(cols: int, rows: int) -> tuple[int, int]:
 class Session:
     """A shell attached to a pseudo-terminal, streamed over the control channel."""
 
-    def __init__(self, conn: Connection, rendered: bool = False) -> None:
+    def __init__(self, conn: Connection, rendered: bool = False, session_id: str = "") -> None:
         self._conn = conn
+        self._session_id = session_id
         self._master_fd: int | None = None
         self._process: asyncio.subprocess.Process | None = None
         self._reader_task: asyncio.Task | None = None
@@ -145,7 +152,8 @@ class Session:
                 self._schedule_flush()
             else:
                 await self._conn.send(
-                    MessageType.TERMINAL_OUTPUT, TerminalOutputPayload(data=text)
+                    MessageType.TERMINAL_OUTPUT,
+                    TerminalOutputPayload(data=text, session_id=self._session_id),
                 )
 
         code = None
@@ -178,6 +186,7 @@ class Session:
             lines=[line.rstrip() for line in self._screen.display],
             cursor_row=self._screen.cursor.y,
             cursor_col=self._screen.cursor.x,
+            session_id=self._session_id,
         )
         try:
             await self._conn.send(MessageType.TERMINAL_SCREEN, payload)
@@ -188,7 +197,7 @@ class Session:
         try:
             await self._conn.send(
                 MessageType.TERMINAL_EXIT,
-                TerminalExitPayload(exit_code=code, detail=detail),
+                TerminalExitPayload(exit_code=code, detail=detail, session_id=self._session_id),
             )
         except Exception:  # noqa: BLE001 - client may already be gone
             pass
@@ -259,14 +268,23 @@ async def handle_open(conn: Connection, raw: dict, config: AgentConfig) -> None:
         await conn.send_error("not_available", describe(), envelope.id)
         return
 
-    await close_for(conn)  # reopening replaces the old shell
-    session = Session(conn, rendered=envelope.payload.rendered)
+    session_id = envelope.payload.session_id
+    # Ayni kimlikle tekrar acmak eskisini degistirir; farkli kimlik yeni sekme.
+    await _close_session(conn, session_id)
+
+    if _session_count(conn) >= _MAX_SESSIONS:
+        await conn.send_error(
+            "too_many_sessions", f"en fazla {_MAX_SESSIONS} terminal acilabilir", envelope.id
+        )
+        return
+
+    session = Session(conn, rendered=envelope.payload.rendered, session_id=session_id)
     try:
         await session.start(envelope.payload.cols, envelope.payload.rows)
     except OSError as exc:
         await conn.send_error("terminal_failed", str(exc), envelope.id)
         return
-    _sessions[id(conn)] = session
+    _sessions[(id(conn), session_id)] = session
 
 
 async def handle_input(conn: Connection, raw: dict, config: AgentConfig) -> None:
@@ -276,7 +294,7 @@ async def handle_input(conn: Connection, raw: dict, config: AgentConfig) -> None
         await conn.send_error("bad_request", str(exc), raw.get("id"))
         return
 
-    session = _sessions.get(id(conn))
+    session = _sessions.get((id(conn), envelope.payload.session_id))
     if session is None:
         await conn.send_error("not_open", "terminal oturumu acik degil", envelope.id)
         return
@@ -290,17 +308,34 @@ async def handle_resize(conn: Connection, raw: dict, config: AgentConfig) -> Non
         await conn.send_error("bad_request", str(exc), raw.get("id"))
         return
 
-    session = _sessions.get(id(conn))
+    session = _sessions.get((id(conn), envelope.payload.session_id))
     if session is not None:
         session.resize(envelope.payload.cols, envelope.payload.rows)
 
 
 async def handle_close(conn: Connection, raw: dict, config: AgentConfig) -> None:
-    await close_for(conn)
+    try:
+        envelope = Envelope[TerminalClosePayload].model_validate(raw)
+    except ValidationError:
+        await close_for(conn)  # kimlik okunamadiysa en guvenlisi hepsini kapatmak
+        return
+    await _close_session(conn, envelope.payload.session_id)
+
+
+def _session_count(conn: Connection) -> int:
+    return sum(1 for conn_id, _ in _sessions if conn_id == id(conn))
+
+
+async def _close_session(conn: Connection, session_id: str) -> None:
+    session = _sessions.pop((id(conn), session_id), None)
+    if session is not None:
+        await session.close()
 
 
 async def close_for(conn: Connection) -> None:
-    """Also called when the socket drops, so no shell outlives its connection."""
-    session = _sessions.pop(id(conn), None)
-    if session is not None:
-        await session.close()
+    """Soket dustugunde cagrilir: o baglantinin butun kabuklari kapanir,
+    hicbiri arkada sahipsiz kalmaz."""
+    for key in [key for key in _sessions if key[0] == id(conn)]:
+        session = _sessions.pop(key, None)
+        if session is not None:
+            await session.close()

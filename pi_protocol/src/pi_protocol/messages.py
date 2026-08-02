@@ -349,8 +349,19 @@ class NetworkInfoPayload(BaseModel):
 # --- terminal ---------------------------------------------------------------
 
 
-class TerminalOpenPayload(BaseModel):
-    """Start a shell on a pseudo-terminal. One session per connection."""
+class TerminalSessionRef(BaseModel):
+    """Hangi kabuk?
+
+    Kimligi istemci uretir: sunucunun bir 'acildi' yaniti beklemeden ikinci
+    sekmeyi acabilmesi ve her mesajin kendi basina hangi oturuma ait oldugunu
+    tasimasi icin. Bos birakilirsa tek oturumlu eski davranis surer.
+    """
+
+    session_id: str = ""
+
+
+class TerminalOpenPayload(TerminalSessionRef):
+    """Start a shell on a pseudo-terminal."""
 
     cols: int = 80
     rows: int = 24
@@ -360,26 +371,26 @@ class TerminalOpenPayload(BaseModel):
     rendered: bool = False
 
 
-class TerminalInputPayload(BaseModel):
+class TerminalInputPayload(TerminalSessionRef):
     data: str
 
 
-class TerminalResizePayload(BaseModel):
+class TerminalResizePayload(TerminalSessionRef):
     cols: int
     rows: int
 
 
-class TerminalClosePayload(BaseModel):
+class TerminalClosePayload(TerminalSessionRef):
     """Kill the session without dropping the whole connection."""
 
 
-class TerminalOutputPayload(BaseModel):
+class TerminalOutputPayload(TerminalSessionRef):
     """Raw shell output, escape sequences included - the client emulates."""
 
     data: str
 
 
-class TerminalScreenPayload(BaseModel):
+class TerminalScreenPayload(TerminalSessionRef):
     """Ajanda cizilmis ekran: kacis dizileri yok, oldugu gibi gosterilir."""
 
     lines: list[str]
@@ -387,7 +398,7 @@ class TerminalScreenPayload(BaseModel):
     cursor_col: int = 0
 
 
-class TerminalExitPayload(BaseModel):
+class TerminalExitPayload(TerminalSessionRef):
     exit_code: int | None = None
     detail: str = ""
 

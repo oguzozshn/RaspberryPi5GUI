@@ -58,6 +58,7 @@ from pi_protocol.messages import (
     TerminalOutputPayload,
     TerminalResizePayload,
     TerminalScreenPayload,
+    TerminalSessionRef,
 )
 
 __all__ = [
@@ -122,4 +123,5 @@ __all__ = [
     "TerminalOutputPayload",
     "TerminalScreenPayload",
     "TerminalExitPayload",
+    "TerminalSessionRef",
 ]

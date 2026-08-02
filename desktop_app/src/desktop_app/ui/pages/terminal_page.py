@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import uuid
+
 import pyte
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication, QKeyEvent
@@ -9,6 +11,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QPlainTextEdit,
     QPushButton,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -20,6 +23,10 @@ from desktop_app.async_utils import schedule
 from desktop_app.ui.theme import muted
 
 DEFAULT_COLS, DEFAULT_ROWS = 100, 30
+# Geriye dogru saklanan satir sayisi. Ekrandan kayan satirlar buraya dusuyor;
+# bu olmadan kaydiracak bir sey yok, cunku pyte yalnizca gorunen ekrani tutar.
+SCROLLBACK_LINES = 2000
+MAX_TABS = 8
 
 # Keys with no printable character: what the shell expects to receive instead.
 _SPECIAL_KEYS: dict[int, str] = {
@@ -75,24 +82,17 @@ def paste_payload(text: str) -> str:
     return text.replace("\r\n", "\r").replace("\n", "\r")
 
 
-def key_to_bytes(event: QKeyEvent) -> str:
-    """Translate a Qt key event into what a terminal would send.
+def history_lines(screen: pyte.HistoryScreen) -> list[str]:
+    """Ekrandan yukari kayan satirlar.
 
-    Control combinations are computed rather than tabulated: Ctrl+A..Ctrl+Z map
-    to 0x01..0x1a, which is how Ctrl+C reaches the foreground process as SIGINT.
+    pyte bunlari hucre sozlugu olarak tutuyor; goruntulemek icin metne
+    ceviriyoruz. Ekranin kendisi (screen.display) ayri gelir.
     """
-    if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
-        key = event.key()
-        if Qt.Key.Key_A.value <= key <= Qt.Key.Key_Z.value:
-            return chr(key - Qt.Key.Key_A.value + 1)
-        if key == Qt.Key.Key_BracketLeft.value:
-            return "\x1b"
-        if key == Qt.Key.Key_Backslash.value:
-            return "\x1c"
-
-    if (special := _SPECIAL_KEYS.get(event.key())) is not None:
-        return special
-    return event.text()
+    lines: list[str] = []
+    for row in screen.history.top:
+        text = "".join(row[column].data for column in range(screen.columns))
+        lines.append(text.rstrip())
+    return lines
 
 
 class TerminalView(QPlainTextEdit):
@@ -107,6 +107,7 @@ class TerminalView(QPlainTextEdit):
         self.setUndoRedoEnabled(False)
         self.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setMaximumBlockCount(SCROLLBACK_LINES + DEFAULT_ROWS + 50)
 
         font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
         font.setPointSize(10)
@@ -143,39 +144,127 @@ class TerminalView(QPlainTextEdit):
         menu.exec(self.mapToGlobal(position))
 
 
-class TerminalPage(QWidget):
-    """A real shell on the Pi, driven over the control channel.
+def key_to_bytes(event: QKeyEvent) -> str:
+    """Translate a Qt key event into what a terminal would send.
 
-    The agent runs it on a pseudo-terminal, so interactive programs (htop, nano,
-    a sudo password prompt) work; pyte turns the escape sequences back into a
-    screen here."""
+    Control combinations are computed rather than tabulated: Ctrl+A..Ctrl+Z map
+    to 0x01..0x1a, which is how Ctrl+C reaches the foreground process as SIGINT.
+    """
+    if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+        key = event.key()
+        if Qt.Key.Key_A.value <= key <= Qt.Key.Key_Z.value:
+            return chr(key - Qt.Key.Key_A.value + 1)
+        if key == Qt.Key.Key_BracketLeft.value:
+            return "\x1b"
+        if key == Qt.Key.Key_Backslash.value:
+            return "\x1c"
+
+    if (special := _SPECIAL_KEYS.get(event.key())) is not None:
+        return special
+    return event.text()
+
+
+class TerminalTab(QWidget):
+    """Tek bir kabuk: kendi ekrani, kendi gecmisi, kendi oturum kimligi."""
+
+    def __init__(self, app_state: AppState, session_id: str) -> None:
+        super().__init__()
+        self._app_state = app_state
+        self.session_id = session_id
+        self.open = False
+        self.awaiting_first_output = False
+
+        self._screen = pyte.HistoryScreen(DEFAULT_COLS, DEFAULT_ROWS, history=SCROLLBACK_LINES)
+        self._stream = pyte.Stream(self._screen)
+
+        self.view = TerminalView(self.send_input)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.view)
+
+    # --- oturum -------------------------------------------------------------
+
+    def start(self) -> None:
+        self._screen.reset()
+        self.view.clear()
+        self.open = True
+        self.awaiting_first_output = True
+        schedule(
+            self._app_state.open_terminal(DEFAULT_COLS, DEFAULT_ROWS, self.session_id),
+            lambda exc: self.feed(f"\r\n[baglanti hatasi: {exc}]\r\n"),
+        )
+        self.view.setFocus()
+
+    def close_session(self) -> None:
+        if not self.open:
+            return
+        self.open = False
+        schedule(self._app_state.close_terminal(self.session_id), lambda _exc: None)
+
+    def send_input(self, data: str) -> None:
+        if not self.open:
+            return
+        schedule(
+            self._app_state.send_terminal_input(data, self.session_id),
+            lambda exc: self.feed(f"\r\n[gonderilemedi: {exc}]\r\n"),
+        )
+
+    # --- cizim --------------------------------------------------------------
+
+    def feed(self, text: str) -> None:
+        self.awaiting_first_output = False
+        self._stream.feed(text)
+        self.render()
+
+    def render(self) -> None:
+        """Gecmis + gorunen ekrani birlikte yaz.
+
+        Bunlar ayri ayri tutuluyor: pyte'in ekrani sabit yukseklikte, yukari
+        kayan satirlar history.top'a dusuyor. Ikisini birlestirmeden kaydirilacak
+        bir metin olusmuyor.
+        """
+        lines = history_lines(self._screen) + [line.rstrip() for line in self._screen.display]
+        while lines and not lines[-1]:
+            lines.pop()
+
+        bar = self.view.verticalScrollBar()
+        # Kullanici yukari kaydirdiysa onu asagi zorlamiyoruz - sadece zaten
+        # dipteyken takip etmeye devam ediyoruz.
+        at_bottom = bar.value() >= bar.maximum() - 4
+        position = bar.value()
+
+        self.view.setPlainText("\n".join(lines))
+        bar.setValue(bar.maximum() if at_bottom else min(position, bar.maximum()))
+
+
+class TerminalPage(QWidget):
+    """Pi'de gercek kabuklar, sekmeler halinde.
+
+    Ajan her sekme icin ayri bir pseudo-terminal aciyor; etkilesimli programlar
+    (htop, nano, sudo parola sorgusu) calisir, pyte kacis dizilerini burada
+    ekrana cevirir."""
 
     def __init__(self, app_state: AppState) -> None:
         super().__init__()
         self._app_state = app_state
-        self._open = False
-        # Ajan "acildi" diye ayri bir mesaj gondermiyor: oturumun kalktigini ilk
-        # ciktidan anliyoruz. Bu bayrak olmadan "baslatiliyor" yazisi ekranda
-        # asili kaliyordu - ve kabuk hic acilamadiginda da oyle.
-        self._awaiting_first_output = False
-        self._screen = pyte.Screen(DEFAULT_COLS, DEFAULT_ROWS)
-        self._stream = pyte.Stream(self._screen)
 
         self._banner = QLabel("")
         self._banner.setWordWrap(True)
         self._banner.setStyleSheet(muted(self, size_px=12))
 
-        self._view = TerminalView(self._send_input)
+        self._tabs = QTabWidget()
+        self._tabs.setTabsClosable(True)
+        self._tabs.setMovable(True)
+        self._tabs.tabCloseRequested.connect(self._close_tab)
 
-        self._open_button = QPushButton("Baslat")
-        self._close_button = QPushButton("Kapat")
-        self._open_button.clicked.connect(self.open_session)
-        self._close_button.clicked.connect(self.close_session)
-        self._close_button.setEnabled(False)
+        self._new_button = QPushButton("Yeni sekme")
+        self._new_button.clicked.connect(self.new_tab)
+        self._restart_button = QPushButton("Bu sekmeyi yeniden baslat")
+        self._restart_button.clicked.connect(self._restart_current)
 
         toolbar = QHBoxLayout()
-        toolbar.addWidget(self._open_button)
-        toolbar.addWidget(self._close_button)
+        toolbar.addWidget(self._new_button)
+        toolbar.addWidget(self._restart_button)
         toolbar.addStretch(1)
 
         self._status = QLabel("")
@@ -184,7 +273,7 @@ class TerminalPage(QWidget):
         layout = QVBoxLayout(self)
         layout.addWidget(self._banner)
         layout.addLayout(toolbar)
-        layout.addWidget(self._view, stretch=1)
+        layout.addWidget(self._tabs, stretch=1)
         layout.addWidget(self._status)
 
         app_state.terminal_output.connect(self._on_output)
@@ -199,88 +288,96 @@ class TerminalPage(QWidget):
             detail = capabilities.terminal_detail or "sebep bildirilmedi"
             self._banner.setText(f"Terminal kullanilamiyor: {detail}")
             self._banner.setStyleSheet("color: #e67e22;")
-            self._open_button.setEnabled(False)
+            self._new_button.setEnabled(False)
+            self._restart_button.setEnabled(False)
             return
 
         self._banner.setText(
-            f"Kabuk: {capabilities.terminal_detail} · Bu sekme Pi'de tam yetkili bir "
-            "kabuk acar; SSH ile ayni seyleri yapabilirsiniz."
+            f"Kabuk: {capabilities.terminal_detail} · Her sekme Pi'de ayri bir kabuk acar; "
+            "SSH ile ayni seyleri yapabilirsiniz."
         )
-        # Opening a shell is not free (a process on the Pi), so it waits for the
-        # user rather than starting with the application.
+        if self._tabs.count() == 0:
+            self.new_tab()
 
-    def open_session(self) -> None:
-        self._reset_screen()
-        self._set_status("Kabuk baslatiliyor...")
-        schedule(
-            self._app_state.open_terminal(DEFAULT_COLS, DEFAULT_ROWS),
-            lambda exc: self._set_status(str(exc), warn=True),
-        )
-        self._open = True
-        self._awaiting_first_output = True
-        self._open_button.setEnabled(False)
-        self._close_button.setEnabled(True)
-        self._view.setFocus()
+    def new_tab(self) -> TerminalTab | None:
+        if self._tabs.count() >= MAX_TABS:
+            self._set_status(f"en fazla {MAX_TABS} sekme", warn=True)
+            return None
 
-    def close_session(self) -> None:
-        schedule(
-            self._app_state.close_terminal(),
-            lambda exc: self._set_status(str(exc), warn=True),
-        )
-        self._on_closed("oturum kapatildi")
+        tab = TerminalTab(self._app_state, uuid.uuid4().hex)
+        index = self._tabs.addTab(tab, f"Kabuk {self._tabs.count() + 1}")
+        self._tabs.setCurrentIndex(index)
+        tab.start()
+        self._set_status("kabuk baslatiliyor...")
+        return tab
 
-    def _on_closed(self, detail: str, warn: bool = False) -> None:
-        self._open = False
-        self._awaiting_first_output = False
-        self._open_button.setEnabled(True)
-        self._close_button.setEnabled(False)
-        self._set_status(detail, warn=warn)
+    def _close_tab(self, index: int) -> None:
+        tab = self._tabs.widget(index)
+        if isinstance(tab, TerminalTab):
+            tab.close_session()
+        self._tabs.removeTab(index)
+        if self._tabs.count() == 0:
+            self._set_status("acik kabuk yok — 'Yeni sekme' ile baslatin")
 
-    def _on_error(self, code: str, message: str) -> None:
-        """Acilis bekleniyorsa gelen hata neredeyse kesin bizimdir.
-
-        Ajan terminal hatalarini genel `error` zarfiyla gonderiyor; bu sekme
-        onlari dinlemezse basarisiz bir acilis "baslatiliyor" yazisiyla sonsuza
-        kadar asili kalir.
-        """
-        if self._awaiting_first_output:
-            self._on_closed(f"kabuk baslatilamadi — {code}: {message}", warn=True)
-
-    # --- data ---------------------------------------------------------------
-
-    def _send_input(self, data: str) -> None:
-        if not self._open:
+    def _restart_current(self) -> None:
+        tab = self._current_tab()
+        if tab is None:
             return
-        schedule(
-            self._app_state.send_terminal_input(data),
-            lambda exc: self._set_status(str(exc), warn=True),
-        )
+        tab.close_session()
+        tab.start()
+        self._set_status("kabuk baslatiliyor...")
+
+    def _current_tab(self) -> TerminalTab | None:
+        widget = self._tabs.currentWidget()
+        return widget if isinstance(widget, TerminalTab) else None
+
+    def _tab_for(self, session_id: str) -> TerminalTab | None:
+        for index in range(self._tabs.count()):
+            tab = self._tabs.widget(index)
+            if isinstance(tab, TerminalTab) and tab.session_id == session_id:
+                return tab
+        return None
+
+    # --- gelen --------------------------------------------------------------
 
     def _on_output(self, payload: TerminalOutputPayload) -> None:
-        if self._awaiting_first_output:
-            self._awaiting_first_output = False
+        tab = self._tab_for(payload.session_id)
+        if tab is None:
+            return
+        if tab.awaiting_first_output:
             self._set_status(f"kabuk calisiyor — {self._app_state.capabilities.terminal_detail}")
-        self._stream.feed(payload.data)
-        self._render()
+        tab.feed(payload.data)
 
     def _on_exit(self, payload: TerminalExitPayload) -> None:
+        tab = self._tab_for(payload.session_id)
+        if tab is None:
+            return
+        tab.open = False
+        tab.awaiting_first_output = False
         code = "?" if payload.exit_code is None else payload.exit_code
-        self._on_closed(f"{payload.detail} (cikis kodu {code})")
+        index = self._tabs.indexOf(tab)
+        if index >= 0:
+            self._tabs.setTabText(index, self._tabs.tabText(index) + " (kapandi)")
+        self._set_status(f"{payload.detail} (cikis kodu {code})")
 
-    def _reset_screen(self) -> None:
-        self._screen.reset()
-        self._view.clear()
+    def _on_error(self, code: str, message: str) -> None:
+        """Acilis bekleyen bir sekme varsa hata neredeyse kesin ona aittir.
 
-    def _render(self) -> None:
-        """Repaint from pyte's screen buffer rather than appending text: the
-        shell moves the cursor around, and appending would turn a redrawn line
-        (or htop's whole screen) into a scrolling mess."""
-        lines = [line.rstrip() for line in self._screen.display]
-        while lines and not lines[-1]:
-            lines.pop()
-        self._view.setPlainText("\n".join(lines))
-        scrollbar = self._view.verticalScrollBar()
-        scrollbar.setValue(scrollbar.maximum())
+        Ajan terminal hatalarini genel `error` zarfiyla gonderiyor; dinlemezsek
+        basarisiz bir acilis "baslatiliyor" yazisiyla asili kalir.
+        """
+        pending = [
+            self._tabs.widget(index)
+            for index in range(self._tabs.count())
+            if isinstance(self._tabs.widget(index), TerminalTab)
+            and self._tabs.widget(index).awaiting_first_output
+        ]
+        if not pending:
+            return
+        for tab in pending:
+            tab.open = False
+            tab.awaiting_first_output = False
+        self._set_status(f"kabuk baslatilamadi — {code}: {message}", warn=True)
 
     def _set_status(self, text: str, warn: bool = False) -> None:
         self._status.setText(text)

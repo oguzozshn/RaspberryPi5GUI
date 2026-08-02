@@ -190,16 +190,21 @@ class AppState(QObject):
             MessageType.FILES_DELETE, FilesDeletePayload(path=path, recursive=recursive)
         )
 
-    async def open_terminal(self, cols: int, rows: int) -> None:
+    async def open_terminal(self, cols: int, rows: int, session_id: str = "") -> None:
         await self._ws_client.send(
-            MessageType.TERMINAL_OPEN, TerminalOpenPayload(cols=cols, rows=rows)
+            MessageType.TERMINAL_OPEN,
+            TerminalOpenPayload(cols=cols, rows=rows, session_id=session_id),
         )
 
-    async def send_terminal_input(self, data: str) -> None:
-        await self._ws_client.send(MessageType.TERMINAL_INPUT, TerminalInputPayload(data=data))
+    async def send_terminal_input(self, data: str, session_id: str = "") -> None:
+        await self._ws_client.send(
+            MessageType.TERMINAL_INPUT, TerminalInputPayload(data=data, session_id=session_id)
+        )
 
-    async def close_terminal(self) -> None:
-        await self._ws_client.send(MessageType.TERMINAL_CLOSE, TerminalClosePayload())
+    async def close_terminal(self, session_id: str = "") -> None:
+        await self._ws_client.send(
+            MessageType.TERMINAL_CLOSE, TerminalClosePayload(session_id=session_id)
+        )
 
     async def send_chat(self, text: str) -> None:
         await self._ws_client.send(MessageType.CHAT_SEND, ChatSendPayload(text=text))

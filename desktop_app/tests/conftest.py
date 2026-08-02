@@ -31,6 +31,10 @@ def app_state(qapp: QApplication) -> AppState:
         gpio_detail="pinctrl-rp1 (/dev/gpiochip4)",
         docker=True,
         docker_detail="docker 24.0.7",
+        terminal=True,
+        terminal_detail="/bin/bash",
+        vnc=True,
+        vnc_detail="RFB 003.008 (0.0.0.0:5900)",
     )
     return AppState(client, "192.168.1.42", 8765, "token")
 

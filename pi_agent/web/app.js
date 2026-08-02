@@ -12,6 +12,9 @@ const state = {
   capabilities: {},
   terminalOpen: false,
   awaitingFirstScreen: false,
+  // Telefonda tek kabuk yeter; yine de kimlik gonderiyoruz, cunku ajan artik
+  // oturumlari kimlige gore tutuyor.
+  terminalSession: "web",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -234,13 +237,18 @@ $("term-open").onclick = () => {
   $("term-status").textContent = "kabuk baslatiliyor…";
   $("screen").textContent = "";
   state.awaitingFirstScreen = true;
-  send("terminal.open", { cols: terminalColumns(), rows: 24, rendered: true });
+  send("terminal.open", {
+    cols: terminalColumns(),
+    rows: 24,
+    rendered: true,
+    session_id: state.terminalSession,
+  });
   setTerminalOpen(true);
   $("term-input").focus();
 };
 
 $("term-close").onclick = () => {
-  send("terminal.close", {});
+  send("terminal.close", { session_id: state.terminalSession });
   setTerminalOpen(false);
   $("term-status").textContent = "oturum kapatildi";
 };
@@ -250,7 +258,7 @@ $("term-form").onsubmit = (event) => {
   if (!state.terminalOpen) return;
   const input = $("term-input");
   // Satir sonu \r: kabuk \n'i satir sonu saymaz.
-  send("terminal.input", { data: input.value + "\r" });
+  send("terminal.input", { session_id: state.terminalSession, data:input.value + "\r" });
   input.value = "";
 };
 

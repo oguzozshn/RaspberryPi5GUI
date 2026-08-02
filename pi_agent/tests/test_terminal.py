@@ -19,12 +19,14 @@ class _FakeConnection:
         self.output: list[str] = []
         self.screens: list[list[str]] = []
         self.exits: list[tuple] = []
+        self.session_ids: list[str] = []
 
     async def send(self, msg_type, payload, reply_to=None) -> None:
         from pi_protocol import MessageType
 
         if msg_type is MessageType.TERMINAL_OUTPUT:
             self.output.append(payload.data)
+            self.session_ids.append(payload.session_id)
         elif msg_type is MessageType.TERMINAL_SCREEN:
             self.screens.append(payload.lines)
         elif msg_type is MessageType.TERMINAL_EXIT:
@@ -144,6 +146,51 @@ def test_rendered_mode_coalesces_bursts() -> None:
 
     frames = asyncio.run(main())
     assert frames < 60, f"200 satir icin {frames} kare cok fazla"
+
+
+def test_two_sessions_do_not_mix(tmp_path) -> None:
+    """Sekmeler ayri kabuklar: birine yazilan digerine gitmemeli ve her ciktinin
+    hangi oturuma ait oldugu belli olmali."""
+
+    async def main() -> tuple[str, str]:
+        conn_a, conn_b = _FakeConnection(), _FakeConnection()
+        first = terminal.Session(conn_a, session_id="bir")  # type: ignore[arg-type]
+        second = terminal.Session(conn_b, session_id="iki")  # type: ignore[arg-type]
+        await first.start(cols=80, rows=24)
+        await second.start(cols=80, rows=24)
+        try:
+            first.write(f"echo BIRINCI > {tmp_path}/a.txt\r")
+            second.write("echo IKINCI\r")
+            await _wait_for(lambda: "IKINCI" in "".join(conn_b.output))
+            await asyncio.sleep(0.4)
+            return "".join(conn_a.output), "".join(conn_b.output)
+        finally:
+            await first.close()
+            await second.close()
+
+    a_output, b_output = asyncio.run(main())
+    assert "BIRINCI" in a_output
+    assert "IKINCI" not in a_output, "oturumlar birbirine karismamali"
+    assert "IKINCI" in b_output
+    assert "BIRINCI" not in b_output
+
+
+def test_session_id_travels_with_the_output() -> None:
+    """Istemci gelen ciktiyi dogru sekmeye yazabilmeli."""
+
+    async def main() -> list[str]:
+        conn = _FakeConnection()
+        session = terminal.Session(conn, session_id="sekme-3")  # type: ignore[arg-type]
+        await session.start(cols=80, rows=24)
+        try:
+            session.write("echo KIMLIK\r")
+            await _wait_for(lambda: "KIMLIK" in "".join(conn.output))
+            return conn.session_ids
+        finally:
+            await session.close()
+
+    ids = asyncio.run(main())
+    assert ids and set(ids) == {"sekme-3"}
 
 
 def test_close_kills_the_child_process_group() -> None:

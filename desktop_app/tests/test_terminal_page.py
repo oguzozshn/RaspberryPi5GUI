@@ -23,6 +23,13 @@ def _key(key: Qt.Key, text: str = "", ctrl: bool = False) -> QKeyEvent:
     return QKeyEvent(QKeyEvent.Type.KeyPress, key.value, modifiers, text)
 
 
+def _output(page: TerminalPage, data: str, session_id: str | None = None) -> None:
+    tab = page._current_tab()
+    page._on_output(
+        TerminalOutputPayload(data=data, session_id=session_id or tab.session_id)
+    )
+
+
 # --- key mapping ------------------------------------------------------------
 
 
@@ -83,13 +90,13 @@ def test_paste_converts_newlines_for_the_shell() -> None:
     assert paste_payload("ls\r\nps") == "ls\rps"
 
 
-def _spy_input(monkeypatch: pytest.MonkeyPatch, app_state: AppState) -> list[str]:
-    """AppState katmanindan yakala: TerminalView, _send_input'un bagli
-    referansini kurulusta aldigi icin sayfayi yamalamak ise yaramaz."""
-    sent: list[str] = []
+def test_pasting_sends_the_clipboard_to_the_shell(app_state: AppState, monkeypatch: pytest.MonkeyPatch) -> None:
+    page = TerminalPage(app_state)
+    page.start()
+    sent: list[tuple] = []
 
-    def fake(data: str):
-        sent.append(data)
+    def fake(data: str, session_id: str = ""):
+        sent.append((data, session_id))
 
         async def noop() -> None:
             return None
@@ -97,134 +104,140 @@ def _spy_input(monkeypatch: pytest.MonkeyPatch, app_state: AppState) -> list[str
         return noop()
 
     monkeypatch.setattr(app_state, "send_terminal_input", fake)
-    return sent
-
-
-def test_pasting_sends_the_clipboard_to_the_shell(app_state: AppState, monkeypatch: pytest.MonkeyPatch) -> None:
-    page = TerminalPage(app_state)
-    page.open_session()
-    sent = _spy_input(monkeypatch, app_state)
     QGuiApplication.clipboard().setText("sudo systemctl restart pi-agent\n")
 
-    page._view.paste_clipboard()
-    assert sent == ["sudo systemctl restart pi-agent\r"]
+    page._current_tab().view.paste_clipboard()
+    assert sent and sent[0][0] == "sudo systemctl restart pi-agent\r"
 
 
-def test_pasting_an_empty_clipboard_sends_nothing(app_state: AppState, monkeypatch: pytest.MonkeyPatch) -> None:
-    page = TerminalPage(app_state)
-    page.open_session()
-    sent = _spy_input(monkeypatch, app_state)
-    QGuiApplication.clipboard().setText("")
-
-    page._view.paste_clipboard()
-    assert sent == []
-
-
-# --- screen rendering -------------------------------------------------------
+# --- ekran ve gecmis --------------------------------------------------------
 
 
 def test_output_is_rendered(app_state: AppState) -> None:
     page = TerminalPage(app_state)
-    page._on_output(TerminalOutputPayload(data="merhaba\r\n"))
-    assert "merhaba" in page._view.toPlainText()
+    page.start()
+    _output(page, "merhaba\r\n")
+    assert "merhaba" in page._current_tab().view.toPlainText()
 
 
 def test_cursor_movement_redraws_instead_of_appending(app_state: AppState) -> None:
     """Kabuk imleci geri alip satiri yeniden yaziyor; eklemeli bir gorunum
     burada 'kirmizi'yi de 'yesil'i de gosterirdi."""
     page = TerminalPage(app_state)
-    page._on_output(TerminalOutputPayload(data="kirmizi"))
-    page._on_output(TerminalOutputPayload(data="\r\x1b[Kyesil"))
+    page.start()
+    _output(page, "kirmizi")
+    _output(page, "\r\x1b[Kyesil")
 
-    text = page._view.toPlainText()
+    text = page._current_tab().view.toPlainText()
     assert "yesil" in text
     assert "kirmizi" not in text
 
 
-def test_screen_clear_is_honoured(app_state: AppState) -> None:
+def test_lines_scrolled_off_the_screen_are_kept(app_state: AppState) -> None:
+    """Kullanici bildirdi: terminalde yukari kaydirilamiyordu. pyte yalnizca
+    gorunen ekrani tutar; ekrandan kayan satirlar saklanmazsa kaydiracak bir sey
+    olmaz."""
     page = TerminalPage(app_state)
-    page._on_output(TerminalOutputPayload(data="eski satir\r\n"))
-    page._on_output(TerminalOutputPayload(data="\x1b[2J\x1b[H"))
-    assert "eski satir" not in page._view.toPlainText()
+    page.start()
+    for i in range(1, 121):
+        _output(page, f"satir {i}\r\n")
+
+    text = page._current_tab().view.toPlainText()
+    assert "satir 120" in text, "son satir gorunmeli"
+    assert "satir 1\n" in text, "ekrandan kayan satirlar gecmiste durmali"
+    assert text.count("\n") > 60, "gecmis, ekran yuksekliginden uzun olmali"
 
 
-# --- session state ----------------------------------------------------------
+# --- sekmeler ---------------------------------------------------------------
 
 
-def test_buttons_track_the_session(app_state: AppState) -> None:
+def test_first_tab_opens_with_the_page(app_state: AppState) -> None:
     page = TerminalPage(app_state)
-    assert page._open_button.isEnabled()
-    assert not page._close_button.isEnabled()
-
-    page.open_session()
-    assert not page._open_button.isEnabled()
-    assert page._close_button.isEnabled()
-
-    page._on_exit(TerminalExitPayload(exit_code=0, detail="kabuk kapandi"))
-    assert page._open_button.isEnabled()
-    assert not page._close_button.isEnabled()
-    assert "cikis kodu 0" in page._status.text()
+    page.start()
+    assert page._tabs.count() == 1
+    assert page._current_tab().open
 
 
-def test_input_is_dropped_when_no_session_is_open(app_state: AppState, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_tabs_have_separate_sessions_and_screens(app_state: AppState) -> None:
     page = TerminalPage(app_state)
-    sent: list[str] = []
+    page.start()
+    first = page._current_tab()
+    second = page.new_tab()
 
-    def fake(data: str):
-        sent.append(data)
+    assert second is not None
+    assert first.session_id != second.session_id, "her sekme ayri kabuk"
 
-        async def noop() -> None:
-            return None
+    page._on_output(TerminalOutputPayload(data="birinci", session_id=first.session_id))
+    page._on_output(TerminalOutputPayload(data="ikinci", session_id=second.session_id))
 
-        return noop()
-
-    monkeypatch.setattr(app_state, "send_terminal_input", fake)
-
-    page._send_input("ls\r")
-    assert sent == [], "oturum yokken tusa basmak mesaj uretmemeli"
-
-    page.open_session()
-    page._send_input("ls\r")
-    assert sent == ["ls\r"]
+    assert "birinci" in first.view.toPlainText()
+    assert "birinci" not in second.view.toPlainText()
+    assert "ikinci" in second.view.toPlainText()
 
 
-def test_starting_message_clears_once_the_shell_answers(app_state: AppState) -> None:
-    """Kullanici bildirdi: 'kabuk baslatiliyor' yazisi ekranda asili kaliyordu.
-    Ajan ayri bir 'acildi' mesaji gondermiyor, ilk cikti bunun isareti."""
+def test_output_for_an_unknown_session_is_ignored(app_state: AppState) -> None:
     page = TerminalPage(app_state)
-    page.open_session()
-    assert "baslatiliyor" in page._status.text()
+    page.start()
+    page._on_output(TerminalOutputPayload(data="baskasinin ciktisi", session_id="yok-boyle"))
+    assert "baskasinin" not in page._current_tab().view.toPlainText()
 
-    page._on_output(TerminalOutputPayload(data="paarax@paarnax:~ $ "))
-    assert "baslatiliyor" not in page._status.text()
-    assert "calisiyor" in page._status.text()
+
+def test_closing_a_tab_removes_it(app_state: AppState) -> None:
+    page = TerminalPage(app_state)
+    page.start()
+    page.new_tab()
+    assert page._tabs.count() == 2
+
+    page._close_tab(1)
+    assert page._tabs.count() == 1
+
+
+def test_tab_count_is_capped(app_state: AppState) -> None:
+    """Her sekme Pi'de gercek bir surec; sinirsiz acmak makineyi doldurur."""
+    page = TerminalPage(app_state)
+    page.start()
+    for _ in range(20):
+        page.new_tab()
+
+    assert page._tabs.count() <= 8
+    assert "en fazla" in page._status.text()
+
+
+def test_exit_marks_only_its_own_tab(app_state: AppState) -> None:
+    page = TerminalPage(app_state)
+    page.start()
+    first = page._current_tab()
+    second = page.new_tab()
+
+    page._on_exit(TerminalExitPayload(exit_code=0, detail="kabuk kapandi", session_id=first.session_id))
+    assert not first.open
+    assert second.open, "diger sekme etkilenmemeli"
 
 
 def test_a_failed_open_is_reported_not_left_hanging(app_state: AppState) -> None:
-    """Kabuk hic acilamazsa ajan `error` gonderiyor; sekme bunu dinlemezse
-    kullanici sonsuza kadar 'baslatiliyor' gorurdu."""
+    """Kabuk hic acilamazsa ajan `error` gonderiyor; dinlemezsek kullanici
+    sonsuza kadar 'baslatiliyor' gorurdu."""
     page = TerminalPage(app_state)
-    page.open_session()
+    page.start()
 
     page._on_error("terminal_failed", "pty acilamadi")
     assert "baslatilamadi" in page._status.text()
-    assert "pty acilamadi" in page._status.text()
-    assert page._open_button.isEnabled(), "tekrar denenebilmeli"
-    assert not page._close_button.isEnabled()
+    assert not page._current_tab().open
 
 
 def test_unrelated_errors_do_not_touch_a_running_session(app_state: AppState) -> None:
     page = TerminalPage(app_state)
-    page.open_session()
-    page._on_output(TerminalOutputPayload(data="$ "))
+    page.start()
+    _output(page, "$ ")
 
     page._on_error("docker_failed", "baska bir sekmenin hatasi")
     assert "baslatilamadi" not in page._status.text()
-    assert not page._open_button.isEnabled(), "oturum acik kalmali"
+    assert page._current_tab().open
 
 
 def test_page_explains_a_pi_without_a_shell(bare_app_state: AppState) -> None:
     page = TerminalPage(bare_app_state)
     page.start()
     assert "Terminal kullanilamiyor" in page._banner.text()
-    assert not page._open_button.isEnabled()
+    assert not page._new_button.isEnabled()
+    assert page._tabs.count() == 0

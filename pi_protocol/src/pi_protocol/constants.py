@@ -1,6 +1,6 @@
 from enum import Enum
 
-PROTOCOL_VERSION = 8
+PROTOCOL_VERSION = 9
 
 
 class MessageType(str, Enum):
