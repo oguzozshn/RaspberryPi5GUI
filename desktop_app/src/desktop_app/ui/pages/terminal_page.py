@@ -154,6 +154,10 @@ class TerminalPage(QWidget):
         super().__init__()
         self._app_state = app_state
         self._open = False
+        # Ajan "acildi" diye ayri bir mesaj gondermiyor: oturumun kalktigini ilk
+        # ciktidan anliyoruz. Bu bayrak olmadan "baslatiliyor" yazisi ekranda
+        # asili kaliyordu - ve kabuk hic acilamadiginda da oyle.
+        self._awaiting_first_output = False
         self._screen = pyte.Screen(DEFAULT_COLS, DEFAULT_ROWS)
         self._stream = pyte.Stream(self._screen)
 
@@ -185,6 +189,7 @@ class TerminalPage(QWidget):
 
         app_state.terminal_output.connect(self._on_output)
         app_state.terminal_exited.connect(self._on_exit)
+        app_state.error_received.connect(self._on_error)
 
     # --- lifecycle ----------------------------------------------------------
 
@@ -212,6 +217,7 @@ class TerminalPage(QWidget):
             lambda exc: self._set_status(str(exc), warn=True),
         )
         self._open = True
+        self._awaiting_first_output = True
         self._open_button.setEnabled(False)
         self._close_button.setEnabled(True)
         self._view.setFocus()
@@ -223,11 +229,22 @@ class TerminalPage(QWidget):
         )
         self._on_closed("oturum kapatildi")
 
-    def _on_closed(self, detail: str) -> None:
+    def _on_closed(self, detail: str, warn: bool = False) -> None:
         self._open = False
+        self._awaiting_first_output = False
         self._open_button.setEnabled(True)
         self._close_button.setEnabled(False)
-        self._set_status(detail)
+        self._set_status(detail, warn=warn)
+
+    def _on_error(self, code: str, message: str) -> None:
+        """Acilis bekleniyorsa gelen hata neredeyse kesin bizimdir.
+
+        Ajan terminal hatalarini genel `error` zarfiyla gonderiyor; bu sekme
+        onlari dinlemezse basarisiz bir acilis "baslatiliyor" yazisiyla sonsuza
+        kadar asili kalir.
+        """
+        if self._awaiting_first_output:
+            self._on_closed(f"kabuk baslatilamadi — {code}: {message}", warn=True)
 
     # --- data ---------------------------------------------------------------
 
@@ -240,6 +257,9 @@ class TerminalPage(QWidget):
         )
 
     def _on_output(self, payload: TerminalOutputPayload) -> None:
+        if self._awaiting_first_output:
+            self._awaiting_first_output = False
+            self._set_status(f"kabuk calisiyor — {self._app_state.capabilities.terminal_detail}")
         self._stream.feed(payload.data)
         self._render()
 

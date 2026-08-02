@@ -188,6 +188,41 @@ def test_input_is_dropped_when_no_session_is_open(app_state: AppState, monkeypat
     assert sent == ["ls\r"]
 
 
+def test_starting_message_clears_once_the_shell_answers(app_state: AppState) -> None:
+    """Kullanici bildirdi: 'kabuk baslatiliyor' yazisi ekranda asili kaliyordu.
+    Ajan ayri bir 'acildi' mesaji gondermiyor, ilk cikti bunun isareti."""
+    page = TerminalPage(app_state)
+    page.open_session()
+    assert "baslatiliyor" in page._status.text()
+
+    page._on_output(TerminalOutputPayload(data="paarax@paarnax:~ $ "))
+    assert "baslatiliyor" not in page._status.text()
+    assert "calisiyor" in page._status.text()
+
+
+def test_a_failed_open_is_reported_not_left_hanging(app_state: AppState) -> None:
+    """Kabuk hic acilamazsa ajan `error` gonderiyor; sekme bunu dinlemezse
+    kullanici sonsuza kadar 'baslatiliyor' gorurdu."""
+    page = TerminalPage(app_state)
+    page.open_session()
+
+    page._on_error("terminal_failed", "pty acilamadi")
+    assert "baslatilamadi" in page._status.text()
+    assert "pty acilamadi" in page._status.text()
+    assert page._open_button.isEnabled(), "tekrar denenebilmeli"
+    assert not page._close_button.isEnabled()
+
+
+def test_unrelated_errors_do_not_touch_a_running_session(app_state: AppState) -> None:
+    page = TerminalPage(app_state)
+    page.open_session()
+    page._on_output(TerminalOutputPayload(data="$ "))
+
+    page._on_error("docker_failed", "baska bir sekmenin hatasi")
+    assert "baslatilamadi" not in page._status.text()
+    assert not page._open_button.isEnabled(), "oturum acik kalmali"
+
+
 def test_page_explains_a_pi_without_a_shell(bare_app_state: AppState) -> None:
     page = TerminalPage(bare_app_state)
     page.start()

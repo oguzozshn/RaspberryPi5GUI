@@ -11,6 +11,7 @@ const state = {
   token: localStorage.getItem(TOKEN_KEY) || "",
   capabilities: {},
   terminalOpen: false,
+  awaitingFirstScreen: false,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -194,12 +195,19 @@ $("vnc-open").onclick = () => {
 
 function setTerminalOpen(open) {
   state.terminalOpen = open;
+  if (!open) state.awaitingFirstScreen = false;
   $("term-open").disabled = open || !state.capabilities.terminal;
   $("term-close").disabled = !open;
   $("term-input").disabled = !open;
 }
 
 function renderScreen(payload) {
+  if (state.awaitingFirstScreen) {
+    // Ajan ayri bir "acildi" mesaji gondermiyor; oturumun kalktigini ilk
+    // kareden anliyoruz. Bu olmadan "baslatiliyor" yazisi asili kaliyordu.
+    state.awaitingFirstScreen = false;
+    $("term-status").textContent = "kabuk calisiyor";
+  }
   const screen = $("screen");
   // Sondaki bos satirlari at: telefon ekraninda bosluga yer yok.
   const lines = payload.lines.slice();
@@ -225,6 +233,7 @@ function terminalColumns() {
 $("term-open").onclick = () => {
   $("term-status").textContent = "kabuk baslatiliyor…";
   $("screen").textContent = "";
+  state.awaitingFirstScreen = true;
   send("terminal.open", { cols: terminalColumns(), rows: 24, rendered: true });
   setTerminalOpen(true);
   $("term-input").focus();
@@ -252,7 +261,16 @@ document.querySelectorAll(".keys button").forEach((button) => {
 });
 
 function showError(code, message) {
-  const target = currentTab() === "docker" ? $("docker-status") : $("power-status");
+  // Acilis bekleniyorsa hata neredeyse kesin terminale ait: oraya yazilmazsa
+  // basarisiz bir acilis "baslatiliyor" yazisiyla asili kalir.
+  if (state.awaitingFirstScreen) {
+    state.awaitingFirstScreen = false;
+    setTerminalOpen(false);
+    $("term-status").textContent = `kabuk baslatilamadi — ${code}: ${message}`;
+    return;
+  }
+  const targets = { docker: "docker-status", terminal: "term-status", desktop: "vnc-status" };
+  const target = $(targets[currentTab()] || "power-status");
   target.textContent = `${code}: ${message}`;
 }
 

@@ -101,6 +101,24 @@ def test_client_asks_for_a_rendered_terminal() -> None:
     assert "rendered: true" in source
 
 
+def test_client_clears_the_starting_message() -> None:
+    """Kullanici bildirdi: 'kabuk baslatiliyor' yazisi asili kaliyordu. Ajan
+    ayri bir 'acildi' mesaji gondermedigi icin isaret ilk kare."""
+    source = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
+    assert "awaitingFirstScreen" in source
+    # renderScreen icinde temizlenmeli, yoksa yazi asili kalir.
+    render = source.split("function renderScreen")[1].split("function ")[0]
+    assert "awaitingFirstScreen" in render
+
+
+def test_client_routes_errors_to_the_visible_tab() -> None:
+    """Terminal hatasi guc sekmesine yazilirsa kullanici hicbir sey gormez."""
+    source = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
+    show_error = source.split("function showError")[1].split("function ")[0]
+    for target in ("term-status", "docker-status", "vnc-status"):
+        assert target in show_error, target
+
+
 def test_client_hands_vnc_over_to_an_app() -> None:
     """Tarayici ham TCP konusamaz; VNC gomulmuyor, kurulu uygulamaya devrediliyor."""
     source = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
