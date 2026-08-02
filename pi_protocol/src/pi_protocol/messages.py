@@ -354,6 +354,10 @@ class TerminalOpenPayload(BaseModel):
 
     cols: int = 80
     rows: int = 24
+    # True ise ekrani ajan cizip hazir satirlar gonderir (terminal.screen).
+    # Tarayici istemcisi icin: bir ANSI yorumlayicisini tarayiciya gommek yerine
+    # sunucudaki emulatoru paylasiyoruz.
+    rendered: bool = False
 
 
 class TerminalInputPayload(BaseModel):
@@ -373,6 +377,14 @@ class TerminalOutputPayload(BaseModel):
     """Raw shell output, escape sequences included - the client emulates."""
 
     data: str
+
+
+class TerminalScreenPayload(BaseModel):
+    """Ajanda cizilmis ekran: kacis dizileri yok, oldugu gibi gosterilir."""
+
+    lines: list[str]
+    cursor_row: int = 0
+    cursor_col: int = 0
 
 
 class TerminalExitPayload(BaseModel):

@@ -1,6 +1,6 @@
 from enum import Enum
 
-PROTOCOL_VERSION = 7
+PROTOCOL_VERSION = 8
 
 
 class MessageType(str, Enum):
@@ -61,4 +61,5 @@ class MessageType(str, Enum):
     TERMINAL_RESIZE = "terminal.resize"
     TERMINAL_CLOSE = "terminal.close"
     TERMINAL_OUTPUT = "terminal.output"
+    TERMINAL_SCREEN = "terminal.screen"
     TERMINAL_EXIT = "terminal.exit"

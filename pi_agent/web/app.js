@@ -10,6 +10,7 @@ const state = {
   socket: null,
   token: localStorage.getItem(TOKEN_KEY) || "",
   capabilities: {},
+  terminalOpen: false,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -84,6 +85,8 @@ function connect() {
     // kullanici ne zaman isterse o zaman.
     setStatus("baglanti kesildi — dokunup yeniden dene", "down");
     $("status").onclick = () => connect();
+    // Kabuk sokete bagliydi; ajan onu kapatti, arayuz de oyle gostermeli.
+    setTerminalOpen(false);
   };
 
   socket.onerror = () => setStatus("baglanti hatasi", "down");
@@ -110,6 +113,14 @@ function handle(message) {
         ? `${payload.container} ${payload.action}: tamam`
         : `${payload.container} ${payload.action} basarisiz: ${payload.detail}`;
       if (payload.ok) send("docker.list", { include_stopped: true });
+      break;
+    case "terminal.screen":
+      renderScreen(payload);
+      break;
+    case "terminal.exit":
+      setTerminalOpen(false);
+      $("term-status").textContent =
+        `${payload.detail} (cikis kodu ${payload.exit_code === null ? "?" : payload.exit_code})`;
       break;
     case "power.action.result":
       $("power-status").textContent = payload.ok
@@ -142,7 +153,103 @@ function onAuthenticated() {
   $("reboot").disabled = !systemd;
   $("shutdown").disabled = !systemd;
   if (!systemd) $("power-status").textContent = "systemd yok — guc kontrolu kapali";
+
+  const terminal = state.capabilities.terminal;
+  $("term-open").disabled = !terminal;
+  if (!terminal) {
+    $("term-status").textContent =
+      state.capabilities.terminal_detail || "terminal kullanilamiyor";
+  }
+
+  applyVnc();
 }
+
+// --- masaustu (VNC) ---------------------------------------------------------
+
+function applyVnc() {
+  const port = state.capabilities.vnc_port || 5900;
+  // Sayfa Pi'den geldigi icin dogru adres zaten burada.
+  const address = `${location.hostname}:${port}`;
+  $("vnc-address").textContent = address;
+  $("vnc-open").disabled = !state.capabilities.vnc;
+  $("vnc-status").textContent = state.capabilities.vnc
+    ? state.capabilities.vnc_detail
+    : state.capabilities.vnc_detail || "Pi'de VNC sunucusu calismiyor";
+}
+
+$("vnc-open").onclick = () => {
+  const port = state.capabilities.vnc_port || 5900;
+  // Tarayici ham TCP konusamaz; VNC'yi gommek yerine kurulu uygulamaya
+  // devrediyoruz. Uygulama yoksa isletim sistemi bir sey acmaz, o yuzden
+  // kullaniciya ne yapmasi gerektigi yaziliyor.
+  location.href = `vnc://${location.hostname}:${port}`;
+  setTimeout(() => {
+    $("vnc-status").textContent =
+      "Bir sey acilmadiysa telefonda VNC uygulamasi yok demektir " +
+      "(Android: bVNC, iOS: RealVNC Viewer).";
+  }, 1500);
+};
+
+// --- terminal ---------------------------------------------------------------
+
+function setTerminalOpen(open) {
+  state.terminalOpen = open;
+  $("term-open").disabled = open || !state.capabilities.terminal;
+  $("term-close").disabled = !open;
+  $("term-input").disabled = !open;
+}
+
+function renderScreen(payload) {
+  const screen = $("screen");
+  // Sondaki bos satirlari at: telefon ekraninda bosluga yer yok.
+  const lines = payload.lines.slice();
+  while (lines.length && !lines[lines.length - 1]) lines.pop();
+  screen.textContent = lines.join("\n");
+  screen.scrollTop = screen.scrollHeight;
+}
+
+function terminalColumns() {
+  // Telefonda 80 sutun sigmaz; olcup gonderiyoruz ki kabuk dogru sarsin.
+  const probe = document.createElement("span");
+  probe.style.cssText =
+    "position:absolute;visibility:hidden;white-space:pre;font-size:12px;" +
+    'font-family:ui-monospace,"Cascadia Mono",Consolas,monospace';
+  probe.textContent = "0".repeat(10);
+  document.body.append(probe);
+  const charWidth = probe.getBoundingClientRect().width / 10;
+  probe.remove();
+  const available = $("screen").clientWidth - 20;
+  return Math.max(40, Math.min(200, Math.floor(available / (charWidth || 7))));
+}
+
+$("term-open").onclick = () => {
+  $("term-status").textContent = "kabuk baslatiliyor…";
+  $("screen").textContent = "";
+  send("terminal.open", { cols: terminalColumns(), rows: 24, rendered: true });
+  setTerminalOpen(true);
+  $("term-input").focus();
+};
+
+$("term-close").onclick = () => {
+  send("terminal.close", {});
+  setTerminalOpen(false);
+  $("term-status").textContent = "oturum kapatildi";
+};
+
+$("term-form").onsubmit = (event) => {
+  event.preventDefault();
+  if (!state.terminalOpen) return;
+  const input = $("term-input");
+  // Satir sonu \r: kabuk \n'i satir sonu saymaz.
+  send("terminal.input", { data: input.value + "\r" });
+  input.value = "";
+};
+
+document.querySelectorAll(".keys button").forEach((button) => {
+  button.onclick = () => {
+    if (state.terminalOpen) send("terminal.input", { data: button.dataset.send });
+  };
+});
 
 function showError(code, message) {
   const target = currentTab() === "docker" ? $("docker-status") : $("power-status");

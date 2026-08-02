@@ -13,6 +13,9 @@ dependencies = [
     "uvicorn[standard]>=0.29",
     "pydantic>=2.6",
     "psutil>=5.9",
+    # Terminal ekranini sunucuda cizmek icin (tarayici istemcisi): ANSI
+    # yorumlayicisini tarayiciya gommek yerine buradaki emulator paylasiliyor.
+    "pyte>=0.8",
 ]
 
 [project.optional-dependencies]

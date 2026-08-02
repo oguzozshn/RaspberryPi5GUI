@@ -48,6 +48,37 @@
       <p id="power-status" class="muted"></p>
     </section>
 
+    <section id="tab-terminal" class="tab hidden">
+      <div class="row">
+        <button id="term-open">Baslat</button>
+        <button id="term-close" disabled>Kapat</button>
+        <span id="term-status" class="muted"></span>
+      </div>
+      <pre id="screen" class="screen">—</pre>
+      <div class="keys">
+        <button data-send="&#x03;">Ctrl+C</button>
+        <button data-send="&#x09;">Tab</button>
+        <button data-send="&#x1b;[A">↑</button>
+        <button data-send="&#x1b;[B">↓</button>
+        <button data-send="&#x1b;">Esc</button>
+        <button data-send="&#x04;">Ctrl+D</button>
+      </div>
+      <form id="term-form" class="row" autocomplete="off">
+        <input id="term-input" type="text" placeholder="komut…"
+               autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send">
+        <button type="submit" class="primary">Gonder</button>
+      </form>
+    </section>
+
+    <section id="tab-desktop" class="tab hidden">
+      <p id="vnc-status" class="muted"></p>
+      <button id="vnc-open" class="wide">Masaustunu Ac (VNC)</button>
+      <p class="muted">Telefonda bir VNC uygulamasi gerekir (Android: bVNC,
+        iOS: RealVNC Viewer). Dugme adresi o uygulamaya devreder.</p>
+      <p class="muted">Adres elle girilecekse: <code id="vnc-address">—</code>,
+        kullanici adi Pi hesabiniz.</p>
+    </section>
+
     <section id="tab-docker" class="tab hidden">
       <div class="row">
         <button id="docker-refresh">Yenile</button>
@@ -59,8 +90,10 @@
 
   <nav>
     <button data-tab="dashboard" class="active">Durum</button>
-    <button data-tab="power">Guc</button>
+    <button data-tab="terminal">Terminal</button>
     <button data-tab="docker">Docker</button>
+    <button data-tab="desktop">Ekran</button>
+    <button data-tab="power">Guc</button>
   </nav>
 </div>
 

@@ -8,6 +8,7 @@ hale gelir.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -86,5 +87,30 @@ def test_client_speaks_the_same_protocol_types() -> None:
         MessageType.DOCKER_LIST,
         MessageType.DOCKER_ACTION,
         MessageType.POWER_ACTION,
+        MessageType.TERMINAL_OPEN,
+        MessageType.TERMINAL_INPUT,
+        MessageType.TERMINAL_CLOSE,
+        MessageType.TERMINAL_SCREEN,
     ):
         assert message_type.value in source, message_type.value
+
+
+def test_client_asks_for_a_rendered_terminal() -> None:
+    """Tarayicida ANSI yorumlayicisi yok: ekran sunucuda cizilmeli."""
+    source = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
+    assert "rendered: true" in source
+
+
+def test_client_hands_vnc_over_to_an_app() -> None:
+    """Tarayici ham TCP konusamaz; VNC gomulmuyor, kurulu uygulamaya devrediliyor."""
+    source = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
+    assert "vnc://" in source
+
+
+def test_every_tab_in_the_nav_has_a_section() -> None:
+    """Sekme dugmesi ekleyip bolumu unutmak, dokununca bos ekran demek."""
+    html = (WEB_ROOT / "index.html").read_text(encoding="utf-8")
+    tabs = re.findall(r'data-tab="([a-z]+)"', html)
+    assert tabs, "gezinme cubugu bos"
+    for tab in tabs:
+        assert f'id="tab-{tab}"' in html, tab

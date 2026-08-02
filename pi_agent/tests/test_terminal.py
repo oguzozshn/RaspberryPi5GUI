@@ -17,6 +17,7 @@ class _FakeConnection:
 
     def __init__(self) -> None:
         self.output: list[str] = []
+        self.screens: list[list[str]] = []
         self.exits: list[tuple] = []
 
     async def send(self, msg_type, payload, reply_to=None) -> None:
@@ -24,6 +25,8 @@ class _FakeConnection:
 
         if msg_type is MessageType.TERMINAL_OUTPUT:
             self.output.append(payload.data)
+        elif msg_type is MessageType.TERMINAL_SCREEN:
+            self.screens.append(payload.lines)
         elif msg_type is MessageType.TERMINAL_EXIT:
             self.exits.append((payload.exit_code, payload.detail))
 
@@ -97,6 +100,50 @@ def test_resize_is_visible_to_the_shell() -> None:
             await session.close()
 
     assert "132" in asyncio.run(main())
+
+
+def test_rendered_mode_sends_a_screen_not_escape_sequences() -> None:
+    """Tarayici istemcisi icin: ANSI'yi ajan yorumlar, karsiya duz satirlar
+    gider - boylece tarayiciya bir emulator gommek gerekmez."""
+
+    async def main() -> tuple[list[list[str]], list[str]]:
+        conn = _FakeConnection()
+        session = terminal.Session(conn, rendered=True)  # type: ignore[arg-type]
+        await session.start(cols=80, rows=24)
+        try:
+            session.write("echo RENDERED_TESTI\r")
+            await _wait_for(
+                lambda: any("RENDERED_TESTI" in "".join(s) for s in conn.screens)
+            )
+            return conn.screens, conn.output
+        finally:
+            await session.close()
+
+    screens, output = asyncio.run(main())
+    assert screens, "terminal.screen gonderilmeliydi"
+    assert output == [], "cizim modunda ham cikti gonderilmemeli"
+    son = "\n".join(screens[-1])
+    assert "RENDERED_TESTI" in son
+    assert "\x1b" not in son, "kacis dizileri istemciye sizmamali"
+
+
+def test_rendered_mode_coalesces_bursts() -> None:
+    """'cat buyukdosya' saniyede yuzlerce parca uretir; her parcada kare
+    gondermek telefonu bosuna yorardi."""
+
+    async def main() -> int:
+        conn = _FakeConnection()
+        session = terminal.Session(conn, rendered=True)  # type: ignore[arg-type]
+        await session.start(cols=80, rows=24)
+        try:
+            session.write("for i in $(seq 1 200); do echo satir $i; done\r")
+            await _wait_for(lambda: any("satir 200" in "".join(s) for s in conn.screens))
+            return len(conn.screens)
+        finally:
+            await session.close()
+
+    frames = asyncio.run(main())
+    assert frames < 60, f"200 satir icin {frames} kare cok fazla"
 
 
 def test_close_kills_the_child_process_group() -> None:

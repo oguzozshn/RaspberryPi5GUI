@@ -17,6 +17,7 @@ from pi_protocol import (
     TerminalOpenPayload,
     TerminalOutputPayload,
     TerminalResizePayload,
+    TerminalScreenPayload,
 )
 
 from pi_agent.config import AgentConfig
@@ -35,6 +36,9 @@ except ImportError:  # pragma: no cover - only hit off-Linux
 
 _READ_BYTES = 8192
 _MAX_COLS, _MAX_ROWS = 500, 200
+
+# Cizim modunda kareler bu araliktan sik gonderilmez (saniyede ~20 kare).
+_RENDER_INTERVAL_SECONDS = 0.05
 
 # One session per connection: the desktop shows a single terminal tab, and
 # keeping it 1:1 means a dropped socket can never leave a shell behind.
@@ -75,7 +79,7 @@ def _clamp(cols: int, rows: int) -> tuple[int, int]:
 class Session:
     """A shell attached to a pseudo-terminal, streamed over the control channel."""
 
-    def __init__(self, conn: Connection) -> None:
+    def __init__(self, conn: Connection, rendered: bool = False) -> None:
         self._conn = conn
         self._master_fd: int | None = None
         self._process: asyncio.subprocess.Process | None = None
@@ -84,9 +88,21 @@ class Session:
         # an incremental decoder holds the tail until the rest arrives.
         self._decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
 
+        # Cizim modu: ekrani burada tutup hazir satirlar gonderiyoruz, boylece
+        # tarayici istemcisinin bir ANSI yorumlayicisi tasimasi gerekmiyor.
+        self._rendered = rendered
+        self._screen = None
+        self._stream = None
+        self._flush_task: asyncio.Task | None = None
+
     async def start(self, cols: int, rows: int) -> None:
         assert pty is not None
         cols, rows = _clamp(cols, rows)
+        if self._rendered:
+            import pyte  # noqa: PLC0415 - yalnizca cizim modunda gerekli
+
+            self._screen = pyte.Screen(cols, rows)
+            self._stream = pyte.Stream(self._screen)
         master_fd, slave_fd = pty.openpty()
         self._master_fd = master_fd
         _set_winsize(master_fd, cols, rows)
@@ -122,7 +138,12 @@ class Session:
             if not data:
                 break
             text = self._decoder.decode(data)
-            if text:
+            if not text:
+                continue
+            if self._rendered:
+                self._stream.feed(text)
+                self._schedule_flush()
+            else:
                 await self._conn.send(
                     MessageType.TERMINAL_OUTPUT, TerminalOutputPayload(data=text)
                 )
@@ -134,6 +155,34 @@ class Session:
             except asyncio.TimeoutError:
                 code = None
         await self._safe_send_exit(code, "kabuk kapandi")
+
+    def _schedule_flush(self) -> None:
+        """Ekrani hemen degil, kisa bir gecikmeyle gonder.
+
+        'cat buyukdosya' saniyede yuzlerce parca uretir; her parcada 24 satirlik
+        ekrani yollamak telefonu da baglantiyi da bosuna yorar. Gecikme kadar
+        biriktirip tek kare gondermek hem ucuz hem gozle ayni.
+        """
+        if self._flush_task is not None and not self._flush_task.done():
+            return
+        self._flush_task = asyncio.create_task(self._flush_after_delay())
+
+    async def _flush_after_delay(self) -> None:
+        await asyncio.sleep(_RENDER_INTERVAL_SECONDS)
+        await self.send_screen()
+
+    async def send_screen(self) -> None:
+        if self._screen is None:
+            return
+        payload = TerminalScreenPayload(
+            lines=[line.rstrip() for line in self._screen.display],
+            cursor_row=self._screen.cursor.y,
+            cursor_col=self._screen.cursor.x,
+        )
+        try:
+            await self._conn.send(MessageType.TERMINAL_SCREEN, payload)
+        except Exception:  # noqa: BLE001 - istemci gitmis olabilir
+            pass
 
     async def _safe_send_exit(self, code: int | None, detail: str) -> None:
         try:
@@ -155,9 +204,14 @@ class Session:
     def resize(self, cols: int, rows: int) -> None:
         if self._master_fd is None:
             return
-        _set_winsize(self._master_fd, *_clamp(cols, rows))
+        cols, rows = _clamp(cols, rows)
+        _set_winsize(self._master_fd, cols, rows)
+        if self._screen is not None:
+            self._screen.resize(rows, cols)
 
     async def close(self) -> None:
+        if self._flush_task is not None:
+            self._flush_task.cancel()
         if self._reader_task is not None:
             self._reader_task.cancel()
         if self._process is not None and self._process.returncode is None:
@@ -206,7 +260,7 @@ async def handle_open(conn: Connection, raw: dict, config: AgentConfig) -> None:
         return
 
     await close_for(conn)  # reopening replaces the old shell
-    session = Session(conn)
+    session = Session(conn, rendered=envelope.payload.rendered)
     try:
         await session.start(envelope.payload.cols, envelope.payload.rows)
     except OSError as exc:
