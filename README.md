@@ -155,6 +155,13 @@ $env:PI_AGENT_CONFIG = "pi_agent\dev_config.toml"
   harmanlamaz; iki akışın satırları ardışık görünür.
 - **Ağ sekmesi salt okunur.** IP/Wi-Fi ayarı değiştirme yok — bu bağlantı
   üzerinden yapılacak bir hata, düzeltmek için gereken bağlantıyı keserdi.
+- **VNC'yi bu proje kurmaz**, Raspberry Pi OS'un `wayvnc`'sini kullanır; Dashboard'daki
+  düğme sadece sistemdeki VNC istemcisini doğru adresle başlatır. Tek öneri
+  `/etc/wayvnc/config` içinde `address=0.0.0.0` tutmak: varsayılan `::` Pi'nin
+  **genel IPv6 adresinde de** dinler, yani router izin verirse VNC internete
+  açıktır. `0.0.0.0` yerel ağ ve VPN'i açık bırakıp onu kapatır. Tek bir VPN
+  adresine bağlamak ise cazip ama kırılgan — VPN düştüğünde VNC'yi yerel ağdan
+  da erişilemez yapar (denendi, öyle oldu).
 - **Windows Defender/Firewall ilk çalıştırmada uyarı verebilir** (imzasız uygulama).
 - **`raspberrypi.local` Windows'ta her zaman çözümlenmeyebilir** — kurulum
   ekranına IP adresi girmek daha güvenilir; router'da DHCP rezervasyonu önerilir.
